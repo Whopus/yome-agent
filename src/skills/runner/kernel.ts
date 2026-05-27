@@ -677,10 +677,10 @@ function parseBatchCommand(commandLine: string): BatchInvocation | null {
   // Heredoc form. First line: `<domain> batch [flags] <<TAG`
   // Body until matching TAG on its own line.
   const heredoc = normalised.match(
-    /^(\w+)\s+batch\b([^\n]*?)<<(\w+)[ \t]*\n([\s\S]*?)\n[ \t]*\3[ \t]*$/,
+    /^(\w+)\s+batch\b([^\n]*?)<<(['"]?)(\w+)\3[ \t]*\n([\s\S]*?)\n[ \t]*\4[ \t]*$/,
   );
   if (heredoc) {
-    const [, domain, headFlags, , body] = heredoc;
+    const [, domain, headFlags, , , body] = heredoc;
     return { domain, body, flags: parseBatchFlags(headFlags) };
   }
 

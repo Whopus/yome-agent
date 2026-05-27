@@ -276,6 +276,16 @@ describe('routing', () => {
     expect(detectCapabilities()).toContain('sh');
   });
 
+  it('runs sh when the whole shell line is wrapped in quotes', async () => {
+    const { sent, client } = fakeClient();
+    const handler = new RpcHandler(client, { log: () => { /* quiet */ }, workingDirectory: workspaceRoot });
+    const req = makeReq('sh', 'printf');
+    req.command = 'sh "printf ok"';
+    const resp = await dispatchOne(handler, req, sent);
+    expect(resp.exitCode).toBe(0);
+    expect(resp.stdout).toBe('ok');
+  });
+
   it('unknown domain points the model at sh', async () => {
     const { sent, client } = fakeClient();
     const handler = new RpcHandler(client, { log: () => { /* quiet */ } });

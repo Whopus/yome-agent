@@ -275,7 +275,7 @@ export class RpcHandler {
     if (!shellLine) {
       const raw = (req.command ?? '').trim();
       const stripped = raw.replace(/^(?:sh|bash)\s+/i, '');
-      shellLine = stripped || raw;
+      shellLine = unwrapSingleQuotedShellLine(stripped || raw);
     }
     if (!shellLine.trim()) {
       return Promise.resolve({ stdout: '', stderr: '[bash] empty command', exitCode: 2 });
@@ -703,6 +703,28 @@ export class RpcHandler {
 
 function shellQuote(s: string): string {
   return /[\s'"`$\\]/.test(s) ? `'${s.replace(/'/g, "'\\''")}'` : s;
+}
+
+function unwrapSingleQuotedShellLine(command: string): string {
+  const trimmed = command.trim();
+  if (trimmed.length < 2) return trimmed;
+  const quote = trimmed[0];
+  if ((quote !== '"' && quote !== "'") || trimmed[trimmed.length - 1] !== quote) return trimmed;
+
+  let escaped = false;
+  for (let i = 1; i < trimmed.length - 1; i++) {
+    const ch = trimmed[i]!;
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === quote) return trimmed;
+  }
+  return trimmed.slice(1, -1);
 }
 
 async function walkTree(dir: string, depth: number, prefix: string, out: string[]): Promise<void> {

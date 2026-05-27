@@ -35,6 +35,7 @@ describe.skipIf(!probe.ok)('python-openpyxl xl backend integration', () => {
     await okCall('new', [book], { force: true });
     await okCall('books');
     await stdoutContains('sheets', [], {}, 'Sheet');
+    await stdoutContains('info', [book], {}, '"sheets"');
 
     await okCall('set', ['A1'], { value: 'Name', type: 'text' });
     await okCall('set', ['B1'], { value: 'Qty', type: 'text' });
@@ -43,6 +44,8 @@ describe.skipIf(!probe.ok)('python-openpyxl xl backend integration', () => {
     await stdoutContains('get', ['B2'], { format: 'raw' }, '10000');
     await stdoutContains('range', ['A1:B2'], {}, '贴片\t10000');
     await stdoutContains('used', [], {}, '"range": "A1:B2"');
+    await stdoutContains('range', [book], { sheet: 'Sheet', range: 'A1:B2' }, '贴片\t10000');
+    await stdoutContains('used', [book], { sheet: 'Sheet' }, '"range": "A1:B2"');
     await stdoutContains('find', ['贴片'], {}, 'A2\t贴片');
 
     await okCall('fill', ['A3:B4'], { values: '批次\\n1\t2' });
