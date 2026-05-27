@@ -251,6 +251,7 @@ export class RpcHandler {
   private async handleXl(req: WsRpcRequest): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     const action = req.parsed?.action ?? '';
     if (!action) return { stdout: '', stderr: '[xl] action is required', exitCode: 2 };
+    if (action === 'batch') return this.handleSkillBatch('xl', req);
     const { positionals, flags } = skillCallFromParsedArgs((req.parsed?.args ?? {}) as Record<string, unknown>);
     const r = await invokeSkill({
       slugOrDomain: 'xl',
@@ -260,6 +261,53 @@ export class RpcHandler {
       workingDirectory: this.workingDirectory,
     });
     return { stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode };
+  }
+
+  private async handleSkillBatch(domain: string, req: WsRpcRequest): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const raw = req.parsed?.args?.commands;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return { stdout: '', stderr: `[${domain} batch] missing parsed commands`, exitCode: 2 };
+    }
+
+    let commands: Array<{ domain?: string; action?: string; args?: Record<string, unknown> }>;
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error('commands is not an array');
+      commands = parsed as typeof commands;
+    } catch (err) {
+      return { stdout: '', stderr: `[${domain} batch] invalid commands payload: ${(err as Error).message}`, exitCode: 2 };
+    }
+
+    const lines: string[] = [];
+    for (let i = 0; i < commands.length; i++) {
+      const sub = commands[i]!;
+      if (sub.domain && sub.domain !== domain) {
+        return { stdout: lines.join('\n'), stderr: `[${domain} batch] line ${i + 1}: domain mismatch ${sub.domain}`, exitCode: 2 };
+      }
+      const subAction = sub.action ?? '';
+      if (!subAction) {
+        return { stdout: lines.join('\n'), stderr: `[${domain} batch] line ${i + 1}: missing action`, exitCode: 2 };
+      }
+      const { positionals, flags } = skillCallFromParsedArgs(sub.args ?? {});
+      const r = await invokeSkill({
+        slugOrDomain: domain,
+        action: subAction,
+        positionals,
+        flags,
+        workingDirectory: this.workingDirectory,
+      });
+      const text = (r.stdout || '').trim();
+      if (r.exitCode !== 0) {
+        return {
+          stdout: lines.join('\n'),
+          stderr: `[${domain} batch] line ${i + 1} ${subAction}: ${r.stderr || r.stdout || `exit ${r.exitCode}`}`,
+          exitCode: r.exitCode,
+        };
+      }
+      lines.push(`✓ ${subAction}${text ? ': ' + text : ''}`);
+    }
+
+    return { stdout: `${lines.join('\n')}\n— batch ok (${commands.length} commands)`, stderr: '', exitCode: 0 };
   }
 
   /**

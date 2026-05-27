@@ -315,6 +315,24 @@ describe('routing', () => {
     expect(resp.exitCode).toBe(0);
     expect(resp.stdout).toContain('xl-python:ping:C3:ok');
   });
+
+  it('runs parsed xl batch commands through the installed backend', async () => {
+    const skillDir = writeFakeXlSkill();
+    writeFakeSkillIndex(skillDir);
+
+    const { sent, client } = fakeClient();
+    const handler = new RpcHandler(client, { log: () => { /* quiet */ }, workingDirectory: workspaceRoot });
+    const commands = JSON.stringify([
+      { domain: 'xl', action: 'ping', args: { positional: 'A1', value: 'one' } },
+      { domain: 'xl', action: 'ping', args: { positional: 'B2', value: 'two' } },
+    ]);
+    const resp = await dispatchOne(handler, makeReq('xl', 'batch', { commands }), sent);
+
+    expect(resp.exitCode).toBe(0);
+    expect(resp.stdout).toContain('xl-python:ping:A1:one');
+    expect(resp.stdout).toContain('xl-python:ping:B2:two');
+    expect(resp.stdout).toContain('batch ok (2 commands)');
+  });
 });
 
 // Sanity check: helpers we rely on across the suite behave as expected.
