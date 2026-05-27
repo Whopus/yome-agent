@@ -12,6 +12,19 @@ export interface SkillCommandSummary {
   since?: string;
 }
 
+export interface SkillBackendDescriptor {
+  runtime?: string;
+  engine?: string;
+  platforms?: string[];
+  supports?: string[];
+  enabled?: boolean;
+  status?: string;
+}
+
+export interface SkillAdapterDescriptor {
+  prefer?: string[];
+}
+
 export interface SkillManifest {
   schemaVersion?: number;
   slug: string;
@@ -48,6 +61,8 @@ export interface SkillManifest {
   prompt_line?: string;
   platforms?: string[];
   delivery?: Record<string, unknown>;
+  backends?: Record<string, SkillBackendDescriptor>;
+  adapters?: Record<string, SkillAdapterDescriptor>;
   capabilities?: string[];
   /** OS-level resources the skill needs (M9 security model). One of:
    *  fs:read, fs:write, fs:delete, applescript, network, shell. */

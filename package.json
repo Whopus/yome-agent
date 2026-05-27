@@ -1,6 +1,6 @@
 {
   "name": "@poping/yome",
-  "version": "0.0.6",
+  "version": "0.0.12",
   "description": "Yome Agent — the open-source Empower Kernel CLI",
   "type": "module",
   "bin": {
@@ -47,17 +47,17 @@
     "ink-text-input": "^6.0.0",
     "marked": "^17.0.6",
     "meow": "^13.0.0",
-    "node-cron": "^3.0.3",
+    "node-cron": "^4.2.1",
     "react": "^18.3.1",
     "ws": "^8.20.1"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^20.14.0",
+    "@types/node": "^25.9.1",
     "@types/node-cron": "^3.0.11",
     "@types/react": "^18.3.3",
     "@types/ws": "^8.18.1",
-    "typescript": "^5.5.0",
+    "typescript": "^6.0.3",
     "vitest": "^4.1.5"
   }
 }

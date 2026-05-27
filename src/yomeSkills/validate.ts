@@ -80,6 +80,9 @@ function checkBackends(skillDir: string, deliveryRaw: unknown, report: CheckRepo
   if (delivery.node && !existsSync(join(skillDir, 'backends', 'node'))) {
     report.warnings.push('delivery.node declared but backends/node/ missing');
   }
+  if (delivery.python && !existsSync(join(skillDir, 'backends', 'python'))) {
+    report.warnings.push('delivery.python declared but backends/python/ missing');
+  }
 }
 
 export interface ValidateResult {
