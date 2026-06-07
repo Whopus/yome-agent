@@ -1,12 +1,97 @@
-import { readFile, stat } from 'fs/promises';
+import { createReadStream } from 'fs';
+import { stat } from 'fs/promises';
 import { resolve } from 'path';
 import type { ToolDef } from '../types.js';
 
-function addLineNumbers(content: string, startLine: number): string {
-  return content
-    .split('\n')
+const DEFAULT_LIMIT = 2000;
+const MAX_LIMIT = 2000;
+const MAX_RESULT_CHARS = 20_000;
+const MAX_LINE_CHARS = 4000;
+
+function addLineNumbers(lines: string[], startLine: number): string {
+  return lines
     .map((line, i) => `${startLine + i}\t${line}`)
     .join('\n');
+}
+
+function readLineWindow(
+  filePath: string,
+  offset: number,
+  limit: number,
+): Promise<{ lines: string[]; truncated: boolean; hitCharBudget: boolean }> {
+  return new Promise((resolveP, reject) => {
+    const stream = createReadStream(filePath, { encoding: 'utf-8', highWaterMark: 64 * 1024 });
+    const lines: string[] = [];
+    let lineNo = 1;
+    let current = '';
+    let currentTruncated = false;
+    let totalChars = 0;
+    let sawData = false;
+    let done = false;
+    let truncated = false;
+    let hitCharBudget = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolveP({ lines, truncated, hitCharBudget });
+    };
+
+    const appendChar = (ch: string) => {
+      if (lineNo < offset || lines.length >= limit) return;
+      const canKeep =
+        current.length < MAX_LINE_CHARS &&
+        totalChars + current.length < MAX_RESULT_CHARS;
+      if (canKeep) {
+        current += ch;
+      } else {
+        currentTruncated = true;
+        if (totalChars + current.length >= MAX_RESULT_CHARS) hitCharBudget = true;
+      }
+    };
+
+    const commitLine = (): boolean => {
+      if (lineNo >= offset && lines.length < limit) {
+        const suffix = currentTruncated ? ' [line truncated]' : '';
+        lines.push(current + suffix);
+        totalChars += current.length + suffix.length + 16;
+        if (lines.length >= limit || totalChars >= MAX_RESULT_CHARS) {
+          truncated = true;
+          if (totalChars >= MAX_RESULT_CHARS) hitCharBudget = true;
+          stream.destroy();
+          finish();
+          return true;
+        }
+      }
+      lineNo++;
+      current = '';
+      currentTruncated = false;
+      return false;
+    };
+
+    stream.on('data', (chunk: string | Buffer) => {
+      if (done) return;
+      sawData = true;
+      for (const ch of String(chunk)) {
+        if (ch === '\n') {
+          if (commitLine()) return;
+        } else if (ch !== '\r') {
+          appendChar(ch);
+        }
+      }
+    });
+
+    stream.on('end', () => {
+      if (!done && (sawData || current.length > 0) && lines.length < limit) {
+        commitLine();
+      }
+      finish();
+    });
+
+    stream.on('error', (err) => {
+      if (!done) reject(err);
+    });
+  });
 }
 
 export const readTool: ToolDef = {
@@ -32,7 +117,8 @@ export const readTool: ToolDef = {
   async execute(input) {
     const filePath = resolve(input.file_path as string);
     const offset = Math.max(1, (input.offset as number) || 1);
-    const limit = (input.limit as number) || 2000;
+    const requestedLimit = Math.max(1, (input.limit as number) || DEFAULT_LIMIT);
+    const limit = Math.min(requestedLimit, MAX_LIMIT);
 
     try {
       await stat(filePath);
@@ -40,19 +126,22 @@ export const readTool: ToolDef = {
       return `Error: File not found: ${filePath}`;
     }
 
-    const raw = await readFile(filePath, 'utf-8');
-    const lines = raw.split('\n');
-    const totalLines = lines.length;
-    const startIdx = offset - 1;
-    const slice = lines.slice(startIdx, startIdx + limit);
-
-    const numbered = addLineNumbers(slice.join('\n'), offset);
+    const { lines, truncated, hitCharBudget } = await readLineWindow(filePath, offset, limit);
+    const numbered = addLineNumbers(lines, offset);
     let result = numbered;
 
-    if (startIdx + limit < totalLines) {
-      result += `\n\n[Showing lines ${offset}-${startIdx + limit} of ${totalLines} total]`;
+    if (requestedLimit > MAX_LIMIT) {
+      result += `\n\n[Requested ${requestedLimit} lines; capped at ${MAX_LIMIT} lines]`;
     }
 
-    return result;
+    if (truncated) {
+      result += `\n\n[Showing at most ${limit} lines from ${offset}]`;
+    }
+
+    if (hitCharBudget) {
+      result += `\n[Read output capped at ${MAX_RESULT_CHARS} chars]`;
+    }
+
+    return result || '(empty file or offset beyond EOF)';
   },
 };

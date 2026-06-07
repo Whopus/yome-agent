@@ -2,6 +2,8 @@ import fg from 'fast-glob';
 import { resolve } from 'path';
 import type { ToolDef } from '../types.js';
 
+const MAX_RESULTS = 100;
+
 export const globTool: ToolDef = {
   name: 'Glob',
   description: 'Find files matching a glob pattern. Returns file paths.',
@@ -25,7 +27,7 @@ export const globTool: ToolDef = {
     const pattern = input.pattern as string;
     const searchPath = resolve((input.path as string) || process.cwd());
 
-    const files = await fg(pattern, {
+    const stream = fg.stream(pattern, {
       cwd: searchPath,
       ignore: ['**/node_modules/**', '**/.git/**'],
       dot: true,
@@ -33,14 +35,24 @@ export const globTool: ToolDef = {
       absolute: false,
     });
 
-    files.sort();
-    const limit = 100;
-    const truncated = files.length > limit;
-    const shown = truncated ? files.slice(0, limit) : files;
+    const shown: string[] = [];
+    let truncated = false;
+
+    for await (const entry of stream as AsyncIterable<string | Buffer>) {
+      if (shown.length >= MAX_RESULTS) {
+        truncated = true;
+        (stream as any).destroy?.();
+        break;
+      }
+      shown.push(String(entry));
+    }
 
     if (shown.length === 0) return 'No files found';
 
-    let result = `Found ${files.length} file(s)\n${shown.join('\n')}`;
+    shown.sort();
+    let result = truncated
+      ? `Found at least ${MAX_RESULTS + 1} file(s)\n${shown.join('\n')}`
+      : `Found ${shown.length} file(s)\n${shown.join('\n')}`;
     if (truncated) result += '\n(Results truncated. Use a more specific pattern.)';
     return result;
   },

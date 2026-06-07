@@ -7,12 +7,13 @@
 //
 //   incoming (subscribe):
 //     thread:sync            { threadId }
+//     thread:list            { threads: [...] }
 //     thread:created         { threadId, title }
 //     thread:user-message    { threadId, content, imageURLs?, ... }
 //     agent:start            { runId, agentType, sessionId? }
 //     agent:user-message     { runId, content }
 //     agent:text-delta       { runId, delta, agentType }
-//     agent:text-done        { runId, fullText? }
+//     agent:text-done        { runId, text? / fullText? }
 //     agent:tool-use         { runId, toolUseId, name, input }
 //     agent:tool-result      { runId, toolUseId, exitCode, result? }
 //     agent:done             { runId }
@@ -31,13 +32,15 @@
 import type { PartyKitClient } from './partykit-client.js';
 
 export type ThreadEvent =
+  | { type: 'connected'; clientType?: string; userId?: string }
+  | { type: 'thread:list'; threads: ThreadSummary[] }
   | { type: 'thread:sync'; threadId: string }
   | { type: 'thread:created'; threadId: string; title?: string }
   | { type: 'thread:user-message'; threadId: string; content: string; imageURLs?: string[] }
   | { type: 'agent:start'; runId: string; agentType?: string; sessionId?: string; threadId?: string }
   | { type: 'agent:user-message'; runId: string; content: string; threadId?: string }
   | { type: 'agent:text-delta'; runId: string; delta: string; agentType?: string; threadId?: string }
-  | { type: 'agent:text-done'; runId: string; fullText?: string; threadId?: string }
+  | { type: 'agent:text-done'; runId: string; text?: string; fullText?: string; threadId?: string }
   | { type: 'agent:tool-use'; runId: string; toolUseId: string; name: string; input: Record<string, unknown>; threadId?: string }
   | { type: 'agent:tool-result'; runId: string; toolUseId: string; exitCode: number; result?: string; threadId?: string }
   | { type: 'agent:done'; runId: string; threadId?: string }
@@ -48,6 +51,12 @@ export type ThreadEvent =
   | { type: string; [k: string]: unknown };
 
 export type ThreadEventHandler = (event: ThreadEvent) => void;
+
+export interface ThreadSummary {
+  id: string;
+  title: string | null;
+  updatedAt: number;
+}
 
 export interface ThreadStreamOpts {
   client: PartyKitClient;
@@ -91,6 +100,14 @@ export class ThreadStream {
     return this.currentThreadId;
   }
 
+  setThreadId(threadId: string | undefined): void {
+    this.currentThreadId = threadId;
+  }
+
+  async requestThreadList(): Promise<void> {
+    await this.client.send({ type: 'thread:list' });
+  }
+
   /**
    * Send a chat message as if it were typed in iOS / macOS Yome.app.
    * The server treats the connection's authenticated userId as the
@@ -120,13 +137,11 @@ export class ThreadStream {
     }
     if (!parsed || typeof parsed !== 'object' || typeof parsed.type !== 'string') return;
 
-    // Latch threadId from the first authoritative server frame so the
-    // next user message round-trips cleanly even before the user
-    // explicitly switches threads.
+    // Latch threadId from the authoritative server sync frame so the
+    // next user message round-trips cleanly. Do not latch thread:created:
+    // the room broadcasts thread creation for every thread, including
+    // threads this TUI is not attached to.
     if (parsed.type === 'thread:sync' && typeof (parsed as { threadId?: unknown }).threadId === 'string') {
-      this.currentThreadId = (parsed as { threadId: string }).threadId;
-    }
-    if (parsed.type === 'thread:created' && !this.currentThreadId && typeof (parsed as { threadId?: unknown }).threadId === 'string') {
       this.currentThreadId = (parsed as { threadId: string }).threadId;
     }
 

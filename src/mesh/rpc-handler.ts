@@ -18,6 +18,16 @@
 //   grep — system rg (or fallback grep), line-numbered matches
 //   glob — fast-glob multi-pattern + exclude
 //
+// chat actions:
+//   show — reads local files into base64 + passes through http(s) URLs,
+//          returns the same `{ ok, type: "attachments", items }` envelope
+//          the macOS/iOS FileBridge produces so Server-side
+//          processChatShowAttachments() uploads them to Supabase. Without
+//          this the Linux mesh hits the default branch and returns
+//          "unknown domain: chat" any time the agent calls chat show with
+//          a local path (URL-only chat show is short-circuited server-side
+//          and doesn't reach the device).
+//
 // IMPORTANT path conventions on Linux mesh (different from macOS sandbox!):
 //   - There is NO Desktop/Downloads/Documents sandbox; full POSIX paths allowed.
 //   - `~` and `~/foo` are expanded to the daemon user's $HOME.
@@ -37,6 +47,7 @@ import { invokeSkill } from '../yomeSkills/invoke.js';
 const BASH_TIMEOUT_MS = 60_000;
 const MAX_STDOUT_CHARS = 64_000;
 const TEXT_SAMPLE_BYTES = 8192;
+const CHAT_SHOW_MAX_FILE_BYTES = 50 * 1024 * 1024; // mirrors chat-attachments bucket limit
 
 export interface RpcHandlerOpts {
   /** Directory where shell/fs commands should run. Defaults to process.cwd(). */
@@ -197,8 +208,11 @@ export class RpcHandler {
     } catch (err) {
       result = { stdout: '', stderr: `[handler] ${(err as Error).message}`, exitCode: 1 };
     }
-    // Cap stdout to avoid blowing past WS frame limits.
-    if (result.stdout.length > MAX_STDOUT_CHARS) {
+    // Cap stdout to avoid blowing past WS frame limits. `chat` is exempt
+    // because chat show returns a JSON envelope with base64 attachment
+    // payloads (up to ~67MB for a 50MB file) that the Server then forwards
+    // to Supabase storage; truncating that would corrupt the upload.
+    if (req.parsed?.domain !== 'chat' && result.stdout.length > MAX_STDOUT_CHARS) {
       result.stdout = result.stdout.slice(0, MAX_STDOUT_CHARS) + `\n[stdout capped at ${MAX_STDOUT_CHARS} chars]`;
     }
     const response: WsRpcResponse = {
@@ -225,6 +239,8 @@ export class RpcHandler {
         return this.handleFs(req);
       case 'xl':
         return this.handleXl(req);
+      case 'chat':
+        return this.handleChat(req);
       // Capabilities we advertise but haven't implemented yet:
       case 'git':
       case 'docker':
@@ -242,10 +258,123 @@ export class RpcHandler {
       default:
         return {
           stdout: '',
-          stderr: `[mesh] unknown domain: ${domain} (linux cli implements: sh, fs, and installed skill domains such as xl). For shell access use \`sh <command>\`.`,
+          stderr: `[mesh] unknown domain: ${domain} (linux cli implements: sh, fs, chat, and installed skill domains such as xl). For shell access use \`sh <command>\`.`,
           exitCode: 127,
         };
     }
+  }
+
+  /**
+   * `chat <action>` — currently only `show` is implemented (the rest of the
+   * chat domain, including `imagine`, is intercepted server-side before it
+   * ever reaches the device, see DeviceAgentRuntime.tryHandleChatShowUrlsOnly
+   * and runChatImagine).
+   *
+   * `chat show --files=<path-or-url,...> [--urls=<URL,...>] [--caption=<text>]`
+   * Reads local files into base64 and passes http(s) URLs through, producing
+   * the same JSON envelope the macOS/iOS FileBridge emits so Server-side
+   * processChatShowAttachments() can upload to Supabase:
+   *
+   *   { "ok": true, "type": "attachments",
+   *     "items": [ { "name", "mime", "sizeBytes", "dataB64"|"url" }, ... ],
+   *     "caption"?: "..." }
+   */
+  private async handleChat(req: WsRpcRequest): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const action = req.parsed?.action ?? '';
+    if (action !== 'show') {
+      return {
+        stdout: '',
+        stderr: `[chat] action '${action || '(empty)'}' is not implemented on linux cli — only 'show' is. 'imagine' runs server-side and never reaches the device.`,
+        exitCode: 127,
+      };
+    }
+    const args = (req.parsed?.args ?? {}) as Record<string, unknown>;
+    const filesRaw = strArg(args, 'files').trim();
+    const urlsRaw = strArg(args, 'urls').trim();
+    const caption = strArg(args, 'caption').trim();
+    if (!filesRaw && !urlsRaw) {
+      return { stdout: '', stderr: 'chat show requires --files=<path,...> or --urls=<URL,...>', exitCode: 1 };
+    }
+
+    const fileEntries = splitCsv(filesRaw);
+    const urlEntries = splitCsv(urlsRaw);
+
+    interface AttachmentItem {
+      name: string;
+      mime: string;
+      sizeBytes: number;
+      dataB64?: string;
+      url?: string;
+    }
+
+    const items: AttachmentItem[] = [];
+    const errors: string[] = [];
+
+    // --files entries: auto-detect URL vs local path
+    for (const entry of fileEntries) {
+      if (/^https?:\/\//.test(entry)) {
+        items.push({
+          name: fileNameFromUrl(entry),
+          mime: mimeFromExt(extOf(entry)),
+          sizeBytes: 0,
+          url: entry,
+        });
+        continue;
+      }
+      const resolved = resolveUserPath(entry, false, this.workingDirectory);
+      if (!resolved) {
+        errors.push(`${entry}: empty path`);
+        continue;
+      }
+      try {
+        const st = await fsp.stat(resolved);
+        if (!st.isFile()) { errors.push(`${entry}: not a regular file`); continue; }
+        if (st.size > CHAT_SHOW_MAX_FILE_BYTES) {
+          errors.push(`${entry}: file too large (${humanSize(st.size)} > 50MB)`);
+          continue;
+        }
+        const buf = await fsp.readFile(resolved);
+        const name = basename(resolved);
+        items.push({
+          name,
+          mime: mimeFromExt(extOf(name)),
+          sizeBytes: buf.length,
+          dataB64: buf.toString('base64'),
+        });
+      } catch (err) {
+        errors.push(`${entry}: ${(err as Error).message}`);
+      }
+    }
+
+    // --urls (backward-compat alias): URL passthrough only
+    for (const entry of urlEntries) {
+      if (!/^https?:\/\//.test(entry)) {
+        errors.push(`${entry}: --urls entries must be http(s) URLs`);
+        continue;
+      }
+      items.push({
+        name: fileNameFromUrl(entry),
+        mime: mimeFromExt(extOf(entry)),
+        sizeBytes: 0,
+        url: entry,
+      });
+    }
+
+    if (items.length === 0) {
+      return {
+        stdout: '',
+        stderr: errors.length > 0 ? errors.join('; ') : 'no valid files or URLs',
+        exitCode: 1,
+      };
+    }
+
+    const envelope: Record<string, unknown> = { ok: true, type: 'attachments', items };
+    if (caption) envelope.caption = caption;
+    return {
+      stdout: JSON.stringify(envelope),
+      stderr: errors.length > 0 ? errors.join('; ') : '',
+      exitCode: 0,
+    };
   }
 
   private async handleXl(req: WsRpcRequest): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -751,6 +880,50 @@ export class RpcHandler {
 
 function shellQuote(s: string): string {
   return /[\s'"`$\\]/.test(s) ? `'${s.replace(/'/g, "'\\''")}'` : s;
+}
+
+function splitCsv(raw: string): string[] {
+  return raw ? raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0) : [];
+}
+
+function extOf(nameOrUrl: string): string {
+  const noQuery = nameOrUrl.split('?')[0] ?? '';
+  const last = noQuery.split('/').pop() ?? '';
+  const dot = last.lastIndexOf('.');
+  return dot === -1 ? '' : last.slice(dot + 1).toLowerCase();
+}
+
+function fileNameFromUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const last = u.pathname.split('/').filter(Boolean).pop() || u.hostname;
+    return decodeURIComponent(last);
+  } catch {
+    return url.split('/').pop() || url;
+  }
+}
+
+function mimeFromExt(ext: string): string {
+  const map: Record<string, string> = {
+    png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
+    webp: 'image/webp', heic: 'image/heic', bmp: 'image/bmp', svg: 'image/svg+xml',
+    tiff: 'image/tiff', tif: 'image/tiff',
+    mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', webm: 'video/webm',
+    mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+    mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/mp4', aac: 'audio/aac',
+    flac: 'audio/flac', ogg: 'audio/ogg',
+    pdf: 'application/pdf',
+    txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json',
+    xml: 'application/xml', html: 'text/html', htm: 'text/html',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc: 'application/msword',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ppt: 'application/vnd.ms-powerpoint',
+    zip: 'application/zip', tar: 'application/x-tar', gz: 'application/gzip',
+  };
+  return map[ext] || 'application/octet-stream';
 }
 
 function unwrapSingleQuotedShellLine(command: string): string {

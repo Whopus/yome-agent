@@ -17,6 +17,8 @@ export interface MeshDaemonOpts {
   partykitHost?: string;
   /** Hostname to advertise. Defaults to os.hostname(). */
   asName?: string;
+  /** Directory where this mesh session should execute shell/fs commands. */
+  workingDirectory?: string;
   /** Log sink; if omitted we use the built-in console logger. */
   log?: (level: 'info' | 'warn' | 'error', msg: string, meta?: Record<string, unknown>) => void;
 }
@@ -38,9 +40,11 @@ export interface MeshDaemon {
  */
 export async function startMeshDaemon(opts: MeshDaemonOpts = {}): Promise<MeshDaemon> {
   const log = opts.log ?? defaultLog;
+  const workingDirectory = opts.workingDirectory ?? process.cwd();
   log('info', 'Starting yome mesh', {
     deviceId: getOrCreateDeviceId(),
     hostname: opts.asName ?? safeHostname(),
+    workingDirectory,
   });
 
   const ticketCache = new TicketCache(() => mintWsTicket({ hubBase: opts.hubBase }));
@@ -54,20 +58,28 @@ export async function startMeshDaemon(opts: MeshDaemonOpts = {}): Promise<MeshDa
     partykitHost: firstTicket.partykit_host,
   });
 
+  // YOME_PARTYKIT_HOST env override lets us point a single binary at a
+  // local `partykit dev` for end-to-end tests without redeploying.
+  const partykitHostOverride = opts.partykitHost ?? process.env.YOME_PARTYKIT_HOST;
+  if (partykitHostOverride && partykitHostOverride !== firstTicket.partykit_host) {
+    log('info', 'PartyKit host override active', { override: partykitHostOverride });
+  }
+
   const client = new PartyKitClient({
     ticketCache,
-    partykitHostOverride: opts.partykitHost,
+    partykitHostOverride,
     clientType: 'desktop',
     log,
   });
 
   const registrar = new DeviceRegistrar(client, {
     hostnameOverride: opts.asName,
+    workingDirectory,
     log,
   });
   registrar.start();
 
-  const rpc = new RpcHandler(client, { log });
+  const rpc = new RpcHandler(client, { workingDirectory, log });
   rpc.start();
 
   await client.connect();

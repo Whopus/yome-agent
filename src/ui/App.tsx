@@ -46,6 +46,44 @@ interface AppProps {
 let _msgIdSeq = 0;
 const nextMsgId = (): number => ++_msgIdSeq;
 
+const UI_TOOL_RESULT_LIMIT = 12_000;
+const UI_DIFF_LINE_LIMIT = 80;
+const UI_SUMMARY_PREFIX = '@@YOME_UI_SUMMARY:';
+
+function compactToolResultForUi(name: string, result: string): string {
+  if (result.startsWith('[YOME_PERMISSION_DENIED]')) return result;
+
+  // These tools feed the model but do not render content in the TUI.
+  if (name === 'Read' || name === 'LS' || name === 'Grep' || name === 'Glob') {
+    return '';
+  }
+
+  if (name === 'Bash') {
+    if (result.startsWith('Exit code:')) {
+      return result.split('\n')[0] ?? result.slice(0, 200);
+    }
+    const lineCount = result.split('\n').length;
+    return lineCount > 3 ? `${UI_SUMMARY_PREFIX}(${lineCount} lines of output)` : '';
+  }
+
+  if (result.startsWith('@@FILE:')) {
+    const lines = result.split('\n');
+    const truncatedByLines = lines.length > UI_DIFF_LINE_LIMIT;
+    let compact = (truncatedByLines ? lines.slice(0, UI_DIFF_LINE_LIMIT) : lines).join('\n');
+    if (compact.length > UI_TOOL_RESULT_LIMIT) {
+      compact = compact.slice(0, UI_TOOL_RESULT_LIMIT) + `\n[Diff output capped at ${UI_TOOL_RESULT_LIMIT} chars]`;
+    } else if (truncatedByLines) {
+      compact += `\n[Diff output capped at ${UI_DIFF_LINE_LIMIT} lines]`;
+    }
+    return compact;
+  }
+
+  if (result.length > UI_TOOL_RESULT_LIMIT) {
+    return result.slice(0, UI_TOOL_RESULT_LIMIT) + `\n[Tool output capped at ${UI_TOOL_RESULT_LIMIT} chars for display]`;
+  }
+  return result;
+}
+
 export function App({ config }: AppProps) {
   const { exit } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -276,6 +314,7 @@ export function App({ config }: AppProps) {
           ]);
         },
         onToolResult(name, result) {
+          const uiResult = compactToolResultForUi(name, result);
           setMessages((prev) => {
             const updated = [...prev];
             for (let i = updated.length - 1; i >= 0; i--) {
@@ -284,7 +323,7 @@ export function App({ config }: AppProps) {
                 break;
               }
             }
-            return [...updated, { id: nextMsgId(), type: 'tool_result', content: result, toolName: name }];
+            return [...updated, { id: nextMsgId(), type: 'tool_result', content: uiResult, toolName: name }];
           });
         },
         onDone(u) {

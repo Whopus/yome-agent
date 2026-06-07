@@ -15,8 +15,9 @@ import { Box, Static, Text, useApp, useInput } from 'ink';
 import { MessageList, getToolLabel, getToolDetail } from './MessageList.js';
 import type { Message } from './MessageList.js';
 import { InputBar } from './InputBar.js';
+import { ThreadPicker } from './ThreadPicker.js';
 import { ThreadStream } from '../mesh/thread-stream.js';
-import type { ThreadEvent } from '../mesh/thread-stream.js';
+import type { ThreadEvent, ThreadSummary } from '../mesh/thread-stream.js';
 import type { MeshDaemon } from '../mesh/index.js';
 
 interface MeshAppProps {
@@ -35,10 +36,17 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
   const [isRunning, setIsRunning] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [threadId, setThreadId] = useState<string | undefined>(initialThreadId);
+  const [threadPickerOpen, setThreadPickerOpen] = useState(!initialThreadId);
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [threadsLoading, setThreadsLoading] = useState(!initialThreadId);
+  const [threadListError, setThreadListError] = useState<string | undefined>();
   const [deviceCount, setDeviceCount] = useState(0);
 
   // Stable references across renders.
   const streamRef = useRef<ThreadStream | null>(null);
+  const threadIdRef = useRef<string | undefined>(initialThreadId);
+  const threadPickerOpenRef = useRef(!initialThreadId);
+  const awaitingThreadSyncRef = useRef(false);
   // Buffer in-flight text deltas keyed by runId so concurrent runs
   // (rare but possible if the user has 2 threads open via iOS) don't
   // smear into each other.
@@ -59,16 +67,88 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
     setMessages((prev) => prev.map((m) => (m.id === msgId ? { ...m, done: true } : m)));
   }, []);
 
+  useEffect(() => { threadIdRef.current = threadId; }, [threadId]);
+  useEffect(() => { threadPickerOpenRef.current = threadPickerOpen; }, [threadPickerOpen]);
+
+  const requestThreadList = useCallback(() => {
+    setThreadsLoading(true);
+    setThreadListError(undefined);
+    const attempt = (n: number) => {
+      const stream = streamRef.current;
+      if (!stream) {
+        if (n < 20) setTimeout(() => attempt(n + 1), 250);
+        return;
+      }
+      stream.requestThreadList()
+        .then(() => { /* thread:list event clears loading */ })
+        .catch((err) => {
+          if (n < 20) {
+            setTimeout(() => attempt(n + 1), 250);
+          } else {
+            setThreadsLoading(false);
+            setThreadListError(`failed to load threads: ${(err as Error).message}`);
+          }
+        });
+    };
+    attempt(0);
+  }, []);
+
+  const isForCurrentThread = (event: ThreadEvent): boolean => {
+    const evThread = (event as { threadId?: unknown }).threadId;
+    if (typeof evThread !== 'string') return false;
+    return evThread === threadIdRef.current;
+  };
+
+  const upsertThread = useCallback((summary: ThreadSummary) => {
+    setThreads((prev) => {
+      const idx = prev.findIndex((t) => t.id === summary.id);
+      const next = [...prev];
+      if (idx >= 0) next[idx] = { ...next[idx], ...summary };
+      else next.push(summary);
+      next.sort((a, b) => b.updatedAt - a.updatedAt);
+      return next;
+    });
+  }, []);
+
   const handleEvent = useCallback((event: ThreadEvent) => {
     switch (event.type) {
-      case 'thread:sync':
+      case 'thread:list': {
+        const list = Array.isArray((event as { threads?: unknown }).threads)
+          ? (event as { threads: ThreadSummary[] }).threads
+          : [];
+        setThreads([...list].sort((a, b) => b.updatedAt - a.updatedAt));
+        setThreadsLoading(false);
+        setThreadListError(undefined);
+        return;
+      }
+
+      case 'thread:sync': {
+        const next = (event as { threadId?: string }).threadId;
+        if (typeof next === 'string') {
+          awaitingThreadSyncRef.current = false;
+          streamRef.current?.setThreadId(next);
+          setThreadId(next);
+          upsertThread({ id: next, title: null, updatedAt: Date.now() });
+        }
+        return;
+      }
+
       case 'thread:created': {
         const next = (event as { threadId?: string }).threadId;
-        if (typeof next === 'string') setThreadId(next);
+        const title = (event as { title?: string }).title ?? null;
+        if (typeof next === 'string') {
+          upsertThread({ id: next, title, updatedAt: Date.now() });
+          if (awaitingThreadSyncRef.current && !threadIdRef.current && !threadPickerOpenRef.current) {
+            awaitingThreadSyncRef.current = false;
+            streamRef.current?.setThreadId(next);
+            setThreadId(next);
+          }
+        }
         return;
       }
 
       case 'thread:user-message': {
+        if (!isForCurrentThread(event)) return;
         // Echo of another device sending a user-message into this
         // thread (e.g. iOS user typed). The server already excludes the
         // sending connection, so seeing this here means "someone else
@@ -79,6 +159,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:start': {
+        if (!isForCurrentThread(event)) return;
         setIsRunning(true);
         return;
       }
@@ -91,6 +172,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:text-delta': {
+        if (!isForCurrentThread(event)) return;
         const { runId, delta } = event as { runId: string; delta?: string };
         if (!delta) return;
         const buf = liveTextByRunRef.current.get(runId);
@@ -106,9 +188,10 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:text-done': {
-        const { runId, fullText } = event as { runId: string; fullText?: string };
+        if (!isForCurrentThread(event)) return;
+        const { runId, fullText, text } = event as { runId: string; fullText?: string; text?: string };
         const buf = liveTextByRunRef.current.get(runId);
-        const final = fullText ?? buf?.text ?? '';
+        const final = fullText ?? text ?? buf?.text ?? '';
         if (final) {
           pushMessage({ type: 'text', content: final, id: buf?.msgId });
         }
@@ -118,6 +201,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:tool-use': {
+        if (!isForCurrentThread(event)) return;
         const { toolUseId, name, input } = event as {
           toolUseId: string;
           name: string;
@@ -140,6 +224,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:tool-result': {
+        if (!isForCurrentThread(event)) return;
         const { toolUseId, exitCode, result } = event as {
           toolUseId: string;
           exitCode: number;
@@ -165,11 +250,13 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:done': {
+        if (!isForCurrentThread(event)) return;
         setIsRunning(false);
         return;
       }
 
       case 'agent:error': {
+        if (!isForCurrentThread(event)) return;
         const msg = String((event as { message?: unknown }).message ?? 'unknown error');
         pushMessage({ type: 'error', content: msg });
         setIsRunning(false);
@@ -178,6 +265,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:retry': {
+        if (!isForCurrentThread(event)) return;
         // Surface as a dim hint, not a hard error.
         const attempt = (event as { attempt?: number }).attempt;
         pushMessage({ type: 'error', content: `(retrying${attempt ? ` #${attempt}` : ''}…)` });
@@ -185,6 +273,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       }
 
       case 'agent:quota-exceeded': {
+        if (!isForCurrentThread(event)) return;
         const reason = String((event as { reason?: unknown }).reason ?? 'quota exceeded');
         pushMessage({ type: 'error', content: `quota: ${reason}` });
         setIsRunning(false);
@@ -200,7 +289,7 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
       default:
         return;
     }
-  }, [pushMessage, markToolDone]);
+  }, [pushMessage, markToolDone, upsertThread]);
 
   // Keep a ref to the latest messages so the tool-result handler above
   // can look up the matching tool_start name without re-binding the
@@ -216,19 +305,31 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
     stream.start();
     const off = stream.on(handleEvent);
     streamRef.current = stream;
+    if (!initialThreadId) requestThreadList();
     return () => {
       off();
       stream.stop();
       streamRef.current = null;
     };
-  }, [daemon, initialThreadId, handleEvent]);
+  }, [daemon, initialThreadId, handleEvent, requestThreadList]);
+
+  const handleThreadSelect = useCallback((nextThreadId: string | undefined) => {
+    awaitingThreadSyncRef.current = nextThreadId === undefined;
+    streamRef.current?.setThreadId(nextThreadId);
+    setThreadId(nextThreadId);
+    setThreadPickerOpen(false);
+    setMessages([]);
+    setStreamText('');
+    setIsRunning(false);
+  }, []);
 
   const handleSubmit = useCallback(async (raw: string) => {
     const value = raw.trim();
-    if (!value) return;
+    if (!value || threadPickerOpenRef.current) return;
     setInputValue('');
     pushMessage({ type: 'user', content: value });
     setIsRunning(true);
+    if (!threadIdRef.current) awaitingThreadSyncRef.current = true;
     try {
       await streamRef.current?.sendUserMessage(value);
     } catch (err) {
@@ -253,7 +354,9 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
   });
 
   const loopName = threadId ? `mesh • ${threadId.slice(0, 8)}` : 'mesh';
-  const banner = `${deviceCount > 0 ? `${deviceCount} devices online` : 'connecting…'}`;
+  const banner = threadPickerOpen
+    ? 'choose a thread'
+    : `${deviceCount > 0 ? `${deviceCount} devices online` : 'connecting...'}`;
 
   return (
     <Box flexDirection="column">
@@ -261,17 +364,30 @@ export function MeshApp({ daemon, initialThreadId }: MeshAppProps): React.ReactE
         <Text color="#E87B35" bold>Yome mesh </Text>
         <Text dimColor>— {banner}</Text>
       </Box>
-      <MessageList
-        messages={messages}
-        streamText={streamText}
-        isRunning={isRunning}
-      />
-      <InputBar
-        value={inputValue}
-        onChange={setInputValue}
-        onSubmit={handleSubmit}
-        loopName={loopName}
-      />
+      {threadPickerOpen ? (
+        <ThreadPicker
+          threads={threads}
+          loading={threadsLoading}
+          error={threadListError}
+          onSelect={handleThreadSelect}
+          onRefresh={requestThreadList}
+          onCancel={exit}
+        />
+      ) : (
+        <>
+          <MessageList
+            messages={messages}
+            streamText={streamText}
+            isRunning={isRunning}
+          />
+          <InputBar
+            value={inputValue}
+            onChange={setInputValue}
+            onSubmit={handleSubmit}
+            loopName={loopName}
+          />
+        </>
+      )}
     </Box>
   );
 }

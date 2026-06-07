@@ -6,6 +6,8 @@ interface ToolResultProps {
   result: string;
 }
 
+const UI_SUMMARY_PREFIX = '@@YOME_UI_SUMMARY:';
+
 function DiffView({ result }: { result: string }) {
   const allLines = result.split('\n');
   const diffLines = allLines.slice(2);
@@ -64,6 +66,14 @@ function DiffView({ result }: { result: string }) {
 }
 
 export function ToolResult({ name, result }: ToolResultProps) {
+  if (result.startsWith(UI_SUMMARY_PREFIX)) {
+    return (
+      <Box marginLeft={4}>
+        <Text dimColor>{result.slice(UI_SUMMARY_PREFIX.length)}</Text>
+      </Box>
+    );
+  }
+
   // Permission denial — surface a concise red line so the user can see the
   // tool was blocked. The full guidance text is kept in the tool_result that
   // goes back to the model.

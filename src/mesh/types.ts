@@ -9,7 +9,7 @@
 // ── Domain types ─────────────────────────────────────────────
 
 export type CommandDomain =
-  | 'bash' | 'fs' | 'git' | 'docker' | 'k8s' | 'systemd'
+  | 'bash' | 'sh' | 'fs' | 'git' | 'docker' | 'k8s' | 'systemd'
   | 'pkg' | 'log' | 'net' | 'svc'
   | 'cal' | 'rem' | 'note'
   | 'xl' | 'ppt' | 'doc' | 'kn' | 'num' | 'pg'
@@ -22,8 +22,10 @@ export interface WsDeviceRegister {
   type: 'mesh:register';
   hostname: string;
   model: string;
+  platform?: string;
   capabilities: string[];
   installedApps: string[];
+  workingDirectory?: string;
   alias?: string;
   deviceDescription?: string;
 }
@@ -80,9 +82,11 @@ export interface WsDeviceUpdated {
     userId: string;
     hostname: string;
     model: string;
+    platform?: string;
     status: 'online' | 'busy' | 'offline';
     capabilities: string[];
     installedApps: string[];
+    workingDirectory?: string;
     currentTask?: string;
     lastHeartbeat: number;
     alias?: string;

@@ -70,7 +70,9 @@ async function defaultOpen(url: string): Promise<void> {
             : process.platform === 'win32'  ? 'start'
             : 'xdg-open';
   try {
-    spawn(cmd, [url], { detached: true, stdio: 'ignore' }).unref();
+    const child = spawn(cmd, [url], { detached: true, stdio: 'ignore' });
+    child.once('error', () => { /* headless / no opener installed — user copies URL */ });
+    child.unref();
   } catch { /* ignore — user can still copy the URL */ }
 }
 

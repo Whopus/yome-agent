@@ -13,6 +13,7 @@ import { modelEntryToConfig } from './config.js';
 import type { AgentLoopCallbacks } from './loops/index.js';
 import type { PastedImage } from './utils/imagePaste.js';
 import { createSessionId, appendMessage, loadSessionMessages, setSessionTitle } from './sessions.js';
+import { trimMessageHistory } from './llm.js';
 
 export interface AgentCallbacks extends AgentLoopCallbacks {
   onLoopChanged?: (name: string) => void;
@@ -198,12 +199,16 @@ export class Agent {
     const loop = this.loopRegistry.get(this.currentLoopName) ?? this.loopRegistry.default();
     const tools = getAnthropicTools();
 
-    await loop.run(userInput, {
-      config: this.config,
-      systemPrompt: this.systemPrompt,
-      messages: this.messages,
-      tools,
-      executeTool,
-    }, callbacks);
+    try {
+      await loop.run(userInput, {
+        config: this.config,
+        systemPrompt: this.systemPrompt,
+        messages: this.messages,
+        tools,
+        executeTool,
+      }, callbacks);
+    } finally {
+      this.messages = trimMessageHistory(this.messages);
+    }
   }
 }

@@ -105,6 +105,7 @@ async function doStart(_pos: string[], flags: MeshCliFlags): Promise<number> {
 }
 
 async function runForeground(flags: MeshCliFlags): Promise<number> {
+  const workingDirectory = process.cwd();
   // ensureMeshRoot first so MESH_PID has a parent dir; foreground path
   // can also be invoked directly (systemd / launchd) without the
   // background path creating ~/.yome/mesh/ for us.
@@ -138,6 +139,7 @@ async function runForeground(flags: MeshCliFlags): Promise<number> {
     daemon = await startMeshDaemon({
       hubBase: flags.hubBase,
       asName: flags.as,
+      workingDirectory,
       log,
     });
   } catch (err) {

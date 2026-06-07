@@ -70,9 +70,41 @@ function createIdleWatchdog(outerSignal?: AbortSignal): IdleWatchdog {
 //   - the most recent N turns (active context)
 // Tool-use ↔ tool-result pairs are kept atomic so we never break the
 // API contract that every tool_use needs its matching tool_result.
-const MAX_KEEP_TAIL = 30;
+const MAX_KEEP_TAIL = parseInt(process.env.YOME_CONTEXT_TAIL_MESSAGES ?? '', 10) || 30;
+const MAX_ANCHOR_TEXT_CHARS = 20_000;
 
-function trimMessageHistory(messages: AgentMessage[]): AgentMessage[] {
+function compactAnchorText(text: string): string {
+  if (text.length <= MAX_ANCHOR_TEXT_CHARS) return text;
+  return text.slice(0, MAX_ANCHOR_TEXT_CHARS) + `\n\n[Anchor message truncated at ${MAX_ANCHOR_TEXT_CHARS} chars]`;
+}
+
+function compactAnchorMessage(message: AgentMessage): AgentMessage {
+  if (typeof message.content === 'string') {
+    return { ...message, content: compactAnchorText(message.content) };
+  }
+
+  const compacted: ContentBlock[] = [];
+  let omittedImages = 0;
+  for (const block of message.content) {
+    if (block.type === 'image') {
+      omittedImages++;
+      continue;
+    }
+    if (block.type === 'text') {
+      compacted.push({ ...block, text: compactAnchorText(block.text) });
+    } else if (block.type === 'tool_result') {
+      compacted.push({ ...block, content: compactAnchorText(block.content) });
+    } else {
+      compacted.push(block);
+    }
+  }
+  if (omittedImages > 0) {
+    compacted.unshift({ type: 'text', text: `[${omittedImages} earlier image(s) omitted during context compaction]` });
+  }
+  return { ...message, content: compacted };
+}
+
+export function trimMessageHistory(messages: AgentMessage[]): AgentMessage[] {
   if (messages.length <= MAX_KEEP_TAIL + 2) return messages;
 
   // Walk backward keeping at least MAX_KEEP_TAIL messages, but extend
@@ -94,7 +126,7 @@ function trimMessageHistory(messages: AgentMessage[]): AgentMessage[] {
 
   // Always keep messages[0] (first user prompt) so the model has the
   // anchor task description.
-  const head = messages[0]!;
+  const head = compactAnchorMessage(messages[0]!);
   const tail = messages.slice(keepFrom);
   const droppedCount = keepFrom - 1;
   const elision: AgentMessage = {

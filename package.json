@@ -25,7 +25,7 @@
     "build:all": "npm run build && npm run build:native",
     "dev": "bun --watch src/index.tsx",
     "start": "node bin/yome.js",
-    "test": "vitest run",
+    "test": "vitest run src",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

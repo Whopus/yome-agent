@@ -15,6 +15,8 @@ import type { WsDeviceRegister, WsDeviceUpdate, WsHeartbeat } from './types.js';
 export interface RegistrarOpts {
   /** Override hostname (useful for `yome mesh start --as <name>`). */
   hostnameOverride?: string;
+  /** Directory where the mesh session was launched. */
+  workingDirectory?: string;
   /** Optional log hook. */
   log?: (level: 'info' | 'warn' | 'error', msg: string, meta?: Record<string, unknown>) => void;
 }
@@ -28,12 +30,14 @@ export class DeviceRegistrar {
   private readonly deviceId: string;
   private readonly hostname: string;
   private readonly model: string;
+  private readonly workingDirectory: string;
   private capabilities: string[];
 
   constructor(private client: PartyKitClient, private opts: RegistrarOpts = {}) {
     this.deviceId = getOrCreateDeviceId();
     this.hostname = opts.hostnameOverride ?? safeHostname();
     this.model = getModelString();
+    this.workingDirectory = opts.workingDirectory ?? process.cwd();
     this.capabilities = detectCapabilities();
   }
 
@@ -79,8 +83,10 @@ export class DeviceRegistrar {
       type: 'mesh:register',
       hostname: this.hostname,
       model: this.model,
+      platform: process.platform,
       capabilities: this.capabilities,
       installedApps: [], // Linux has no app-bundle concept; capabilities cover it
+      workingDirectory: this.workingDirectory,
       ...(state?.alias ? { alias: state.alias } : {}),
       ...(state?.description ? { deviceDescription: state.description } : {}),
     };

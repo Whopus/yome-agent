@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import { resolve } from 'path';
 import type { ToolDef } from '../types.js';
 
+const MAX_CAPTURE_CHARS = 80_000;
+
 function runGrep(args: string[], cwd: string): Promise<string> {
   return new Promise((resolveP) => {
     const proc = spawn(args[0], args.slice(1), {
@@ -12,12 +14,29 @@ function runGrep(args: string[], cwd: string): Promise<string> {
 
     let stdout = '';
     let stderr = '';
+    let capped = false;
 
-    proc.stdout.on('data', (d) => { stdout += d.toString(); });
-    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    const appendCapped = (current: string, chunk: Buffer): string => {
+      if (current.length >= MAX_CAPTURE_CHARS) {
+        capped = true;
+        return current;
+      }
+      const next = current + chunk.toString();
+      if (next.length > MAX_CAPTURE_CHARS) {
+        capped = true;
+        try { proc.kill('SIGTERM'); } catch { /* noop */ }
+        return next.slice(0, MAX_CAPTURE_CHARS);
+      }
+      return next;
+    };
+
+    proc.stdout.on('data', (d) => { stdout = appendCapped(stdout, d); });
+    proc.stderr.on('data', (d) => { stderr = appendCapped(stderr, d); });
 
     proc.on('close', (code) => {
-      if (code === 1 && !stdout.trim()) {
+      if (capped && stdout.trim()) {
+        resolveP(`${stdout.trim()}\n\n[Search output capped at ${MAX_CAPTURE_CHARS} chars]`);
+      } else if (code === 1 && !stdout.trim()) {
         resolveP('No matches found');
       } else if (code !== 0 && code !== 1) {
         resolveP(`Error: ${stderr || `exit code ${code}`}`);

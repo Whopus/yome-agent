@@ -8,7 +8,7 @@
 //   - the LLM long-poll doesn't block the scheduler from firing other
 //     tasks in parallel
 
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import type { TaskRecord } from '../taskStore.js';
@@ -16,7 +16,7 @@ import { runChildTask } from './childRunner.js';
 
 interface ActiveJob {
   task: TaskRecord;
-  job: cron.ScheduledTask;
+  job: ScheduledTask;
   schedule: string;
   tz?: string;
 }

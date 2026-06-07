@@ -9,14 +9,22 @@ import { runDaemonSubcommand } from './daemon/index.js';
 import { runCronSubcommand } from './daemon/cronCli.js';
 import { runTaskById } from './daemon/runTaskEntry.js';
 import { runMeshSubcommand } from './commands/mesh.js';
+import { runTeamSubcommand } from './team/cli.js';
 
 const cli = meow(
   `
   Usage
     $ yome [prompt]
     $ yome skill <subcommand>
+    $ yome team <subcommand>
     $ yome thread <subcommand>
     $ yome mesh <subcommand>
+
+  Team Subcommands
+    $ yome team list                         List teams for the logged-in CLI user
+    $ yome team deployments [team-slug]      Show team deployments for this device
+    $ yome team sync [team-slug]             Install required/recommended hub skills
+    $ yome team billing [team-slug]          Show Team seats and usage
 
   Mesh Subcommands
     $ yome mesh start [--foreground]    Connect this box to Yome Cloud as a mesh device
@@ -63,6 +71,8 @@ const cli = meow(
     --submit        (thread share) Open a PR right after building the bundle
     --case-id       (thread share/submit) Override cases/<domain>/<id>/ name
     --dry-run       (thread submit) Prepare commit but skip git push + gh pr create
+    --json          Print machine-readable JSON for supported commands
+    --org           (team) Team id or slug
 
   Environment Variables
     YOME_API_KEY    API key
@@ -93,6 +103,7 @@ const cli = meow(
       caseId: { type: 'string' },
       dryRun: { type: 'boolean' },
       json: { type: 'boolean' },
+      org: { type: 'string' },
       yes: { type: 'boolean', shortFlag: 'y' },
       grant: { type: 'string' },
       revoke: { type: 'string' },
@@ -161,6 +172,14 @@ if (cli.input[0] === 'thread') {
     caseId: cli.flags.caseId,
     dryRun: !!cli.flags.dryRun,
     verbose: !!cli.flags.verbose,
+  });
+  process.exit(exit);
+}
+
+if (cli.input[0] === 'team') {
+  const exit = await runTeamSubcommand(cli.input.slice(1), {
+    json: !!cli.flags.json,
+    org: typeof cli.flags.org === 'string' ? cli.flags.org : undefined,
   });
   process.exit(exit);
 }
@@ -248,7 +267,7 @@ if (cli.input[0] === 'doctor') {
 //
 // Routes BEFORE the API-key check because skill calls don't need an LLM key.
 const RESERVED_TOP_LEVEL_DOMAINS = new Set([
-  'skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'daemon', 'cron', 'mesh', '__run-task',
+  'skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'team', 'daemon', 'cron', 'mesh', '__run-task',
 ]);
 if (
   cli.input.length >= 1 &&
@@ -265,7 +284,7 @@ if (
     // legitimately use --force as a per-action flag, and it's their semantics
     // — not the CLI-global `--force` of `yome skill install --force` — that
     // matters once we've decided this is a skill invocation.
-    return !/^--?(key|base-url|baseUrl|model|provider|verbose|skill|out|no-redact|noRedact|submit|case-id|caseId|dry-run|dryRun|json|yes|grant|revoke|skip-verify|skipVerify|reason|replaced-by|replacedBy|version|allow-deprecated|allowDeprecated|foreground|follow|f|at|human|once|on|path|tz|cwd|allow|deny|max-ms|maxMs)(=|$)/.test(a);
+    return !/^--?(key|base-url|baseUrl|model|provider|verbose|skill|out|no-redact|noRedact|submit|case-id|caseId|dry-run|dryRun|json|yes|grant|revoke|skip-verify|skipVerify|reason|replaced-by|replacedBy|version|allow-deprecated|allowDeprecated|org|foreground|follow|f|at|human|once|on|path|tz|cwd|allow|deny|max-ms|maxMs)(=|$)/.test(a);
   });
   const commandLine = raw.map((a) => /\s/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a).join(' ');
   const k = await tryKernel(commandLine);
@@ -308,7 +327,7 @@ if (!config.apiKey) {
 // Only enter interactive mode if no recognized subcommand was provided
 if (
   cli.input.length === 0 ||
-  !['skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'daemon', 'cron', 'mesh', '__run-task'].includes(cli.input[0])
+  !['skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'team', 'daemon', 'cron', 'mesh', '__run-task'].includes(cli.input[0])
 ) {
   const initialPrompt = cli.input.join(' ') || undefined;
   const appConfig = initialPrompt

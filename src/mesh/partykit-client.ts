@@ -113,8 +113,12 @@ export class PartyKitClient {
     const type = this.opts.clientType ?? 'desktop';
     const locale = this.opts.locale ?? 'zh';
 
+    // Local `partykit dev` serves plain ws://, not wss://. We sniff the
+    // host so the same override works for staging (wss) and dev (ws).
+    const isLocal = /^(127\.0\.0\.1|localhost|0\.0\.0\.0|10\.|192\.168\.)/.test(host);
+    const scheme = isLocal ? 'ws' : 'wss';
     const url =
-      `wss://${host}/parties/main/${encodeURIComponent(room)}` +
+      `${scheme}://${host}/parties/main/${encodeURIComponent(room)}` +
       `?type=${encodeURIComponent(type)}` +
       `&userId=${encodeURIComponent(ticket.userId)}` +
       `&deviceId=${encodeURIComponent(ticket.deviceId)}` +
