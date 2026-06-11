@@ -34,6 +34,7 @@ export async function runMeshSubcommand(args: string[], flags: MeshCliFlags): Pr
   switch (sub) {
     case 'start':   return doStart(args.slice(1), flags);
     case 'stop':    return doStop();
+    case 'restart': return doRestart(args.slice(1), flags);
     case 'status':  return doStatus();
     case 'logs':    return doLogs(flags);
     case 'rename':  return doRename(args.slice(1));
@@ -57,6 +58,8 @@ function printHelp(): void {
                          iOS / macOS messages stream into it live; lines you
                          type round-trip through Cloud. Forces foreground.
   stop                   Stop the running mesh daemon (SIGTERM).
+  restart                Stop the running daemon and start a new one.
+                         Useful after updating yome-cli via npm.
   status                 Show daemon pid + device id + capabilities.
   logs [-f]              Print mesh daemon log (use -f / --follow to tail).
   info                   Show device id, hostname, alias, detected capabilities.
@@ -165,6 +168,36 @@ async function runForeground(flags: MeshCliFlags): Promise<number> {
 
   // Headless: block forever; the daemon owns timers + WS.
   return new Promise<number>(() => { /* never resolves */ });
+}
+
+async function doRestart(pos: string[], flags: MeshCliFlags): Promise<number> {
+  const pid = readPidIfRunning();
+  if (pid) {
+    try {
+      process.kill(pid, 'SIGTERM');
+      console.log(`✓ sent SIGTERM to pid=${pid}`);
+    } catch (e) {
+      console.error(`✗ failed to stop old process: ${(e as Error).message}`);
+      return 1;
+    }
+    // Wait for the old process to exit before starting a new one.
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      try { process.kill(pid, 0); } catch { break; }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    // If still alive after 5s, bail out.
+    try {
+      process.kill(pid, 0);
+      console.error(`✗ old process (pid=${pid}) did not exit in time`);
+      return 1;
+    } catch { /* exited, good */ }
+    // Clean up stale pid file
+    try { if (existsSync(MESH_PID)) unlinkSync(MESH_PID); } catch { /* ignore */ }
+  } else {
+    console.log('(yome mesh was not running, starting fresh)');
+  }
+  return doStart(pos, flags);
 }
 
 function doStop(): number {

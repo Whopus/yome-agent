@@ -10,6 +10,7 @@ import { runCronSubcommand } from './daemon/cronCli.js';
 import { runTaskById } from './daemon/runTaskEntry.js';
 import { runMeshSubcommand } from './commands/mesh.js';
 import { runTeamSubcommand } from './team/cli.js';
+import { runChatSubcommand } from './commands/chat.js';
 
 const cli = meow(
   `
@@ -19,6 +20,7 @@ const cli = meow(
     $ yome team <subcommand>
     $ yome thread <subcommand>
     $ yome mesh <subcommand>
+    $ yome chat <subcommand>
 
   Team Subcommands
     $ yome team list                         List teams for the logged-in CLI user
@@ -29,10 +31,15 @@ const cli = meow(
   Mesh Subcommands
     $ yome mesh start [--foreground]    Connect this box to Yome Cloud as a mesh device
     $ yome mesh stop                    Stop the background mesh daemon
+    $ yome mesh restart                 Stop + start (pick up new version after npm update)
     $ yome mesh status                  Show mesh daemon status + device id
     $ yome mesh logs [-f]               Print / tail the mesh daemon log
     $ yome mesh info                    Show user + device id + capabilities
     $ yome mesh rename <alias> [desc]   Set this device's display alias
+
+  Chat Subcommands
+    $ yome chat model ocr <image> [--out=<dir>]
+                                      Run Qwen OCR for a local image or URL and optionally write poster-layer artifacts
 
   Skill Subcommands
     $ yome skill install <source>   Install a skill. <source> can be:
@@ -135,6 +142,16 @@ const cli = meow(
       tui: { type: 'boolean' },            // `yome mesh start --tui` mounts a thin-client TUI
       // login flag
       github: { type: 'boolean' },         // `yome login --github` forces GitHub Device Flow
+      // chat model flags
+      rawResponse: { type: 'string' },
+      endpoint: { type: 'string' },
+      settings: { type: 'string' },
+      minPixels: { type: 'string' },
+      maxPixels: { type: 'string' },
+      enableRotate: { type: 'boolean' },
+      margin: { type: 'string' },
+      dpi: { type: 'string' },
+      local: { type: 'boolean' },
     },
   },
 );
@@ -180,6 +197,25 @@ if (cli.input[0] === 'team') {
   const exit = await runTeamSubcommand(cli.input.slice(1), {
     json: !!cli.flags.json,
     org: typeof cli.flags.org === 'string' ? cli.flags.org : undefined,
+  });
+  process.exit(exit);
+}
+
+if (cli.input[0] === 'chat') {
+  const exit = await runChatSubcommand(cli.input.slice(1), {
+    json: !!cli.flags.json,
+    out: typeof cli.flags.out === 'string' ? cli.flags.out : undefined,
+    model: typeof cli.flags.model === 'string' ? cli.flags.model : undefined,
+    rawResponse: typeof cli.flags.rawResponse === 'string' ? cli.flags.rawResponse : undefined,
+    endpoint: typeof cli.flags.endpoint === 'string' ? cli.flags.endpoint : undefined,
+    settings: typeof cli.flags.settings === 'string' ? cli.flags.settings : undefined,
+    minPixels: typeof cli.flags.minPixels === 'string' ? cli.flags.minPixels : undefined,
+    maxPixels: typeof cli.flags.maxPixels === 'string' ? cli.flags.maxPixels : undefined,
+    enableRotate: !!cli.flags.enableRotate,
+    margin: typeof cli.flags.margin === 'string' ? cli.flags.margin : undefined,
+    dpi: typeof cli.flags.dpi === 'string' ? cli.flags.dpi : undefined,
+    local: !!cli.flags.local,
+    hubBase: typeof cli.flags.hubBase === 'string' ? cli.flags.hubBase : undefined,
   });
   process.exit(exit);
 }
@@ -267,7 +303,7 @@ if (cli.input[0] === 'doctor') {
 //
 // Routes BEFORE the API-key check because skill calls don't need an LLM key.
 const RESERVED_TOP_LEVEL_DOMAINS = new Set([
-  'skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'team', 'daemon', 'cron', 'mesh', '__run-task',
+  'skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'team', 'chat', 'daemon', 'cron', 'mesh', '__run-task',
 ]);
 if (
   cli.input.length >= 1 &&
@@ -327,7 +363,7 @@ if (!config.apiKey) {
 // Only enter interactive mode if no recognized subcommand was provided
 if (
   cli.input.length === 0 ||
-  !['skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'team', 'daemon', 'cron', 'mesh', '__run-task'].includes(cli.input[0])
+  !['skill', 'login', 'logout', 'whoami', 'doctor', 'thread', 'team', 'chat', 'daemon', 'cron', 'mesh', '__run-task'].includes(cli.input[0])
 ) {
   const initialPrompt = cli.input.join(' ') || undefined;
   const appConfig = initialPrompt

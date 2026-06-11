@@ -29,6 +29,27 @@ function fakeClient(): { sent: WsRpcResponse[]; client: PartyKitClient } {
   return { sent, client };
 }
 
+function fakeMessageClient(): { sent: unknown[]; emit: (frame: unknown) => void; client: PartyKitClient } {
+  const sent: unknown[] = [];
+  let listener: ((frame: string) => void) | null = null;
+  const client = {
+    onMessage: (cb: (frame: string) => void) => {
+      listener = cb;
+      return () => { listener = null; };
+    },
+    send: async (frame: unknown) => {
+      sent.push(frame);
+    },
+  } as unknown as PartyKitClient;
+  return {
+    sent,
+    emit: (frame: unknown) => {
+      listener?.(typeof frame === 'string' ? frame : JSON.stringify(frame));
+    },
+    client,
+  };
+}
+
 function makeReq(domain: string, action: string, args: Record<string, string> = {}): WsRpcRequest {
   return {
     type: 'rpc:cal-request',
@@ -272,6 +293,22 @@ describe('fs path resolution', () => {
 });
 
 describe('routing', () => {
+  it('responds to device status requests so server probes do not time out', async () => {
+    const { sent, emit, client } = fakeMessageClient();
+    const handler = new RpcHandler(client, { workingDirectory: workspaceRoot });
+    handler.start();
+
+    emit({ type: 'device:status-request', requestId: 'status-1' });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(sent).toContainEqual({
+      type: 'device:status-response',
+      requestId: 'status-1',
+      runningApps: [],
+      appWindows: [],
+    });
+  });
+
   it('advertises sh because the Linux mesh handler implements it', () => {
     expect(detectCapabilities()).toContain('sh');
   });

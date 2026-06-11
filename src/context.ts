@@ -88,7 +88,6 @@ export function buildSystemPrompt(): string {
   const tree = meta.tree;
 
   let prompt = `You are Yome, an AI coding assistant running in the user's terminal.
-You help with software engineering tasks: reading code, writing code, debugging, refactoring, and running commands.
 
 ## Environment
 - Date: ${dateStr}
@@ -100,14 +99,6 @@ You help with software engineering tasks: reading code, writing code, debugging,
 
   if (isGit) {
     prompt += `- Git branch: ${gitBranch}\n`;
-    if (gitStatus) {
-      const statusLines = gitStatus.split('\n').slice(0, 20);
-      prompt += `- Git status:\n${statusLines.map((l) => `  ${l}`).join('\n')}\n`;
-    }
-  }
-
-  if (tree) {
-    prompt += `\n## Project Structure\n\`\`\`\n${tree}\n\`\`\`\n`;
   }
 
   prompt += `
@@ -116,37 +107,20 @@ You help with software engineering tasks: reading code, writing code, debugging,
 - Read files before editing them.
 - Be concise in responses.
 - When editing code, preserve the existing style and patterns.
-- NEVER wrap your response in \`\`\`markdown fences. Output markdown directly — the terminal renders it natively.
+- NEVER wrap your response in \`\`\`markdown fences. Output markdown directly.
 - Verify changes work before reporting completion.
 - Never expose secrets or API keys.
-
-## Available Tools
-You have these tools: Read, Edit, Write, Bash, Yome, AskUser, TodoWrite, Glob, Grep, LS.
-- Use Read to view file contents.
-- Use Edit to modify existing files (find & replace with old_string/new_string).
-- Use Write to create new files.
-- Use Bash for /bin/sh commands ONLY (ls, cat, git, mkdir, build/test runners, pipes…). It does NOT route to hub skills.
-- Use Yome to invoke installed hub-skill commands (xl, ppt, cal, fs, rem, …) — pass the command line exactly as a human would type it (e.g. \`xl books\`, \`ppt new ~/Desktop/x.pptx\`).
-- Use AskUser when requirements are ambiguous or you need the user to choose between trade-offs BEFORE doing irreversible work. Send 1–4 multiple-choice questions; do NOT include "Other" (the UI provides a custom-answer entry). Blocks until the user responds.
-- Use TodoWrite proactively whenever you start a task with 3+ meaningful steps. Always send the FULL list. Keep exactly ONE item in_progress at a time. Flip status the moment you start / finish a step — don't batch updates. Each item needs \`content\` (imperative) + \`activeForm\` (present continuous) + \`status\`.
-- Use Glob to find files by pattern.
-- Use Grep to search file contents.
-- Use LS to list directory contents.
 `;
 
-  // Prompt-style skills (Claude Code-format SKILL.md). The agent injects
-  // their markdown bodies into the prompt at /skill-name invocation time;
-  // here we just advertise them so the model knows they exist.
+  // Prompt-style skills (Claude Code-format SKILL.md)
   const skills = loadAllSkills();
   if (skills.length > 0) {
     prompt += buildSkillsSection(skills);
   }
 
-  // Hub skills (yome-skill.json packages) — these carry typed command
-  // contracts and capability grants. Every installed + enabled hub skill
-  // is exposed to the model so it can reach for the right command
-  // (e.g. ppt.slide.add) instead of trying to roll one from shell.
-  const hubSkills = getInstalledFast().filter((s) => s.status === 'enabled');
+  // Hub skills — filter out domains already covered by built-in tools (fs, sh)
+  const CLI_BUILTIN_DOMAINS = new Set(['fs', 'sh']);
+  const hubSkills = getInstalledFast().filter((s) => s.status === 'enabled' && !CLI_BUILTIN_DOMAINS.has(s.domain));
   if (hubSkills.length > 0) {
     prompt += buildHubSkillsSection(hubSkills);
   }
@@ -166,7 +140,7 @@ You have these tools: Read, Edit, Write, Bash, Yome, AskUser, TodoWrite, Glob, G
  * between two different docs styles when scanning available skills.
  */
 function buildSkillsSection(skills: Skill[]): string {
-  let section = `\n## Available Skills (prompt)\nUser invokes with \`/skill-name [args]\`; you can invoke them too when appropriate.\n\n`;
+  let section = `\nPrompt skills (invoke with \`/skill-name [args]\`):\n\n`;
   for (const skill of skills) {
     const head = `/${skill.name}`;
     const pad = ' '.repeat(head.length);
@@ -199,17 +173,12 @@ function buildSkillsSection(skills: Skill[]): string {
  * the trigger / effects / entry triad.
  */
 function buildHubSkillsSection(entries: ReturnType<typeof getInstalledFast>): string {
-  let section = `\n## Installed Hub Skills\nUse the **Yome** tool: \`<domain> <action> [args]\` (no \`yome\` prefix, no SkillCall, NOT the Bash tool).\nThe Bash tool is for /bin/sh ops only and will NOT route to skills.\n\n`;
+  let section = `\n### Installed skills (invoke via Yome tool: \`<domain> <action> [args]\`)\n\n`;
   for (const e of entries) {
     const manifest = readManifest(e.installedAt);
     section += renderL1Block(e.domain, manifest, e.description) + '\n';
   }
-  section += `\nFor any installed skill:
-  \`<domain> --help\`           one-screen signature (actions + args)
-  \`<domain> --doc\`            list cookbook templates / themes
-  \`<domain> --doc <name>\`     read one template
-  \`<domain> batch <<EOF…EOF\`  run several sub-commands in one call (--keep-going, --merge)
-`;
+  section += `\nFor any skill: \`<domain> --help\` for usage, \`<domain> --doc\` for templates.\n`;
   return section;
 }
 

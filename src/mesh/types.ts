@@ -50,11 +50,19 @@ export interface WsRpcResponse {
   exitCode: number;
 }
 
+export interface WsDeviceStatusResponse {
+  type: 'device:status-response';
+  requestId: string;
+  runningApps?: string[];
+  appWindows?: Array<{ app: string; documents: string[] }>;
+}
+
 export type WsClientFrame =
   | WsDeviceRegister
   | WsDeviceUpdate
   | WsHeartbeat
-  | WsRpcResponse;
+  | WsRpcResponse
+  | WsDeviceStatusResponse;
 
 // ── Frames received FROM PartyKit BY cli ─────────────────────
 
@@ -73,6 +81,18 @@ export interface WsRpcRequest {
     action: string;
     args: Record<string, string>;
   };
+}
+
+export interface WsRpcToolCall {
+  type: 'rpc:tool-call';
+  requestId: string;
+  tool: string;
+  input: Record<string, unknown>;
+}
+
+export interface WsDeviceStatusRequest {
+  type: 'device:status-request';
+  requestId: string;
 }
 
 export interface WsDeviceUpdated {
@@ -97,6 +117,8 @@ export interface WsDeviceUpdated {
 export type WsServerFrame =
   | WsConnected
   | WsRpcRequest
+  | WsRpcToolCall
+  | WsDeviceStatusRequest
   | WsDeviceUpdated
   | { type: string; [k: string]: unknown }; // unknown frames pass through
 

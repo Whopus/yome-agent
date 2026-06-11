@@ -41,7 +41,7 @@ import { homedir } from 'os';
 import { basename, join, resolve as resolvePath, isAbsolute } from 'path';
 import fg from 'fast-glob';
 import type { PartyKitClient } from './partykit-client.js';
-import type { WsRpcRequest, WsRpcResponse } from './types.js';
+import type { WsDeviceStatusRequest, WsDeviceStatusResponse, WsRpcRequest, WsRpcResponse } from './types.js';
 import { invokeSkill } from '../yomeSkills/invoke.js';
 
 const BASH_TIMEOUT_MS = 60_000;
@@ -185,6 +185,14 @@ export class RpcHandler {
       let parsed: unknown;
       try { parsed = JSON.parse(frame); } catch { return; }
       const obj = parsed as { type?: string };
+      if (obj?.type === 'device:status-request') {
+        void this.handleStatusRequest(parsed as WsDeviceStatusRequest);
+        return;
+      }
+      if (obj?.type === 'rpc:tool-call') {
+        void this.handleToolCall(parsed as import('./types.js').WsRpcToolCall);
+        return;
+      }
       if (obj?.type !== 'rpc:cal-request') return;
       const req = obj as unknown as WsRpcRequest;
       // Don't await: each RPC handled independently so a slow bash
@@ -226,6 +234,136 @@ export class RpcHandler {
       await this.client.send(response);
     } catch (err) {
       this.log('error', 'failed to send rpc response', { err: (err as Error).message });
+    }
+  }
+
+  private async handleToolCall(req: import('./types.js').WsRpcToolCall): Promise<void> {
+    this.log('info', 'rpc:tool-call', { requestId: req.requestId, tool: req.tool, input: JSON.stringify(req.input).slice(0, 200) });
+    let result: { stdout: string; stderr: string; exitCode: number };
+    const input = req.input ?? {};
+    const root = this.workingDirectory;
+    try {
+      this.log('info', 'tool-call:dispatch', { tool: req.tool, root });
+      switch (req.tool) {
+        case 'Read': {
+          const path = resolveUserPath(input.file_path as string || '', false, root);
+          this.log('info', 'tool-call:read', { path });
+          if (!path) { result = { stdout: '', stderr: '[Read] file_path is required', exitCode: 2 }; break; }
+          const offset = typeof input.offset === 'number' ? Math.max(0, input.offset) : 0;
+          const limit = typeof input.limit === 'number' ? input.limit : 2000;
+          const read = await readTextFile(path, 'Read');
+          if (!read.ok) { result = { stdout: '', stderr: read.error, exitCode: 1 }; break; }
+          const lines = read.content.split('\n');
+          if (offset === 0 && limit >= lines.length) {
+            result = { stdout: read.content, stderr: '', exitCode: 0 };
+          } else {
+            result = { stdout: lines.slice(offset, offset + limit).join('\n'), stderr: '', exitCode: 0 };
+          }
+          break;
+        }
+        case 'Edit': {
+          const path = resolveUserPath(input.file_path as string || '', false, root);
+          if (!path) { result = { stdout: '', stderr: '[Edit] file_path is required', exitCode: 2 }; break; }
+          const oldStr = (input.old_string as string) ?? '';
+          const newStr = (input.new_string as string) ?? '';
+          const all = Boolean(input.replace_all);
+          if (!oldStr) { result = { stdout: '', stderr: '[Edit] old_string is required', exitCode: 2 }; break; }
+          let original: string;
+          try { original = await fsp.readFile(path, 'utf-8'); } catch (err) {
+            result = { stdout: '', stderr: `[Edit] cannot read ${path}: ${(err as Error).message}`, exitCode: 1 }; break;
+          }
+          if (!all) {
+            const idx = original.indexOf(oldStr);
+            if (idx === -1) { result = { stdout: '', stderr: '[Edit] old_string not found in file', exitCode: 1 }; break; }
+            const updated = original.slice(0, idx) + newStr + original.slice(idx + oldStr.length);
+            await fsp.writeFile(path, updated, 'utf-8');
+            result = { stdout: `replaced 1 occurrence in ${path}`, stderr: '', exitCode: 0 };
+          } else {
+            if (!original.includes(oldStr)) { result = { stdout: '', stderr: '[Edit] old_string not found in file', exitCode: 1 }; break; }
+            const updated = original.split(oldStr).join(newStr);
+            const count = (original.split(oldStr).length - 1);
+            await fsp.writeFile(path, updated, 'utf-8');
+            result = { stdout: `replaced ${count} occurrence(s) in ${path}`, stderr: '', exitCode: 0 };
+          }
+          break;
+        }
+        case 'Write': {
+          const path = resolveUserPath(input.file_path as string || '', false, root);
+          if (!path) { result = { stdout: '', stderr: '[Write] file_path is required', exitCode: 2 }; break; }
+          const content = (input.content as string) ?? '';
+          await fsp.mkdir(join(path, '..'), { recursive: true });
+          await fsp.writeFile(path, content, 'utf-8');
+          result = { stdout: `wrote ${content.length} bytes to ${path}`, stderr: '', exitCode: 0 };
+          break;
+        }
+        case 'Bash': {
+          const command = (input.command as string) ?? '';
+          if (!command.trim()) { result = { stdout: '', stderr: '[Bash] command is required', exitCode: 2 }; break; }
+          // Reuse the existing bash handler by constructing a synthetic rpc request
+          const synthReq: WsRpcRequest = {
+            type: 'rpc:cal-request', requestId: req.requestId,
+            command: `sh ${command}`,
+            parsed: { domain: 'sh' as any, action: command, args: {} },
+          };
+          result = await this.handleBash(synthReq);
+          break;
+        }
+        case 'Glob': {
+          const synthReq: WsRpcRequest = {
+            type: 'rpc:cal-request', requestId: req.requestId,
+            command: 'fs glob', parsed: { domain: 'fs' as any, action: 'glob', args: input as Record<string, string> },
+          };
+          result = await this.handleFs(synthReq);
+          break;
+        }
+        case 'Grep': {
+          const synthReq: WsRpcRequest = {
+            type: 'rpc:cal-request', requestId: req.requestId,
+            command: 'fs grep', parsed: { domain: 'fs' as any, action: 'grep', args: input as Record<string, string> },
+          };
+          result = await this.handleFs(synthReq);
+          break;
+        }
+        case 'LS': {
+          const synthReq: WsRpcRequest = {
+            type: 'rpc:cal-request', requestId: req.requestId,
+            command: 'fs ls', parsed: { domain: 'fs' as any, action: 'ls', args: input as Record<string, string> },
+          };
+          result = await this.handleFs(synthReq);
+          break;
+        }
+        default:
+          result = { stdout: '', stderr: `[tool-call] unknown tool: ${req.tool}`, exitCode: 127 };
+      }
+    } catch (err) {
+      this.log('error', 'tool-call:error', { tool: req.tool, err: (err as Error).message, stack: (err as Error).stack?.slice(0, 300) });
+      result = { stdout: '', stderr: `[tool-call] ${(err as Error).message}`, exitCode: 1 };
+    }
+    this.log('info', 'tool-call:result', { tool: req.tool, exitCode: result!.exitCode, stdoutLen: result!.stdout?.length, stderrLen: result!.stderr?.length });
+    // Cap stdout
+    if (result!.stdout && result!.stdout.length > MAX_STDOUT_CHARS) {
+      result!.stdout = result!.stdout.slice(0, MAX_STDOUT_CHARS) + `\n[stdout capped at ${MAX_STDOUT_CHARS} chars]`;
+    }
+    const response: WsRpcResponse = {
+      type: 'rpc:cal-response', requestId: req.requestId,
+      stdout: result!.stdout ?? '', stderr: result!.stderr ?? '', exitCode: result!.exitCode ?? 1,
+    };
+    try { await this.client.send(response); } catch (err) {
+      this.log('error', 'failed to send tool-call response', { err: (err as Error).message });
+    }
+  }
+
+  private async handleStatusRequest(req: WsDeviceStatusRequest): Promise<void> {
+    const response: WsDeviceStatusResponse = {
+      type: 'device:status-response',
+      requestId: req.requestId,
+      runningApps: [],
+      appWindows: [],
+    };
+    try {
+      await this.client.send(response);
+    } catch (err) {
+      this.log('error', 'failed to send device status response', { err: (err as Error).message });
     }
   }
 
