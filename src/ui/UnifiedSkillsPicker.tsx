@@ -13,6 +13,7 @@ import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { UnifiedSkill } from '../yomeSkills/unified.js';
 import { originLabel } from '../yomeSkills/unified.js';
+import { theme } from './theme.js';
 
 interface UnifiedSkillsPickerProps {
   skills: UnifiedSkill[];
@@ -81,7 +82,7 @@ export function UnifiedSkillsPicker({
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} paddingY={0} width="100%">
       {/* Header */}
       <Box>
-        <Text bold color="#E87B35">Skills</Text>
+        <Text bold color={theme.accent}>Skills</Text>
         <Text dimColor>{'  '}{'\u2014'}{'  '}{hubCount} hub  ·  {promptCount} prompt</Text>
       </Box>
 
@@ -111,18 +112,18 @@ export function UnifiedSkillsPicker({
           <Box key={s.id} flexDirection="column">
             <Box>
               <Box width={POINTER_W} flexShrink={0}>
-                <Text color={isFocused ? '#E87B35' : undefined} bold={isFocused}>
+                <Text color={isFocused ? theme.accent : undefined} bold={isFocused}>
                   {isFocused ? '>' : ' '}
                 </Text>
               </Box>
               <Box width={TOGGLE_W} flexShrink={0}>
-                <Text color="#E87B35">{toggle}</Text>
+                <Text color={theme.accent}>{toggle}</Text>
               </Box>
               <Box width={GAP_W} flexShrink={0}>
                 <Text> </Text>
               </Box>
               <Box width={nameColW} flexShrink={0}>
-                <Text bold color={isFocused ? '#E87B35' : undefined} wrap="truncate-end">
+                <Text bold color={isFocused ? theme.accent : undefined} wrap="truncate-end">
                   {s.name}
                 </Text>
               </Box>
@@ -174,7 +175,7 @@ export function UnifiedSkillsPicker({
       </Box>
       <Box marginTop={1}>
         <Text dimColor wrap="truncate-end">
-          <Text color="#E87B35">{'\u2191\u2193'}</Text> nav   <Text color="#E87B35">Space</Text> toggle   <Text color="#E87B35">a</Text> add{focused?.kind === 'hub' ? <>   <Text color="#E87B35">u</Text> uninstall</> : ''}   <Text color="#E87B35">Esc</Text> close
+          <Text color={theme.accent}>{'\u2191\u2193'}</Text> nav   <Text color={theme.accent}>Space</Text> toggle   <Text color={theme.accent}>a</Text> add{focused?.kind === 'hub' ? <>   <Text color={theme.accent}>u</Text> uninstall</> : ''}   <Text color={theme.accent}>Esc</Text> close
         </Text>
       </Box>
     </Box>

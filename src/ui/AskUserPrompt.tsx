@@ -10,6 +10,7 @@ import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import type { AskUserQuestion, AskUserResult } from '../tools/askUser.js';
+import { theme } from './theme.js';
 
 interface AskUserPromptProps {
   questions: AskUserQuestion[];
@@ -77,9 +78,9 @@ export function AskUserPrompt({ questions, onResolve }: AskUserPromptProps) {
   };
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="#E87B35" paddingX={1} marginTop={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1} marginTop={1}>
       <Box>
-        <Text bold color="#E87B35">[{current.header}]</Text>
+        <Text bold color={theme.accent}>[{current.header}]</Text>
         <Text dimColor>
           {' '}问题 {qIndex + 1}/{questions.length}
         </Text>
@@ -96,7 +97,7 @@ export function AskUserPrompt({ questions, onResolve }: AskUserPromptProps) {
             const isCustom = opt.label === CUSTOM_LABEL;
             return (
               <Box key={`${i}-${opt.label}`}>
-                <Text color={isFocused ? '#E87B35' : undefined} bold={isFocused} dimColor={isCustom && !isFocused}>
+                <Text color={isFocused ? theme.accent : undefined} bold={isFocused} dimColor={isCustom && !isFocused}>
                   {pointer}{opt.label}
                 </Text>
                 {opt.description && (
@@ -112,7 +113,7 @@ export function AskUserPrompt({ questions, onResolve }: AskUserPromptProps) {
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>输入自定义答案（Enter 确认，留空返回选项列表）：</Text>
           <Box>
-            <Text color="#E87B35">{'> '}</Text>
+            <Text color={theme.accent}>{'> '}</Text>
             <TextInput value={customText} onChange={setCustomText} onSubmit={handleCustomSubmit} />
           </Box>
         </Box>

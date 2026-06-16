@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { Key } from 'ink';
+import { theme } from './theme.js';
 
 export interface VisualLine {
   text: string;
@@ -330,7 +331,7 @@ export function MultilineTextInput({
   columns,
   focus = true,
   prompt = '> ',
-  promptColor = '#E87B35',
+  promptColor = theme.accent,
   maxVisibleLines = DEFAULT_MAX_VISIBLE_LINES,
   onNavigateSuggestion,
   onAcceptSuggestion,

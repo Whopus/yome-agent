@@ -7,6 +7,7 @@ import { isSkillDisabled, isAgentDisabled, toggleSkill, toggleAgent } from '../t
 import { addPermissionRuleToUserSettings, extractBashRulePrefix } from '../permissions/loader.js';
 import { MessageList, getToolLabel, getToolDetail } from './MessageList.js';
 import { InputBar } from './InputBar.js';
+import { theme } from './theme.js';
 import type { SlashCommand } from './InputBar.js';
 import { Banner } from './Banner.js';
 import { AgentPicker } from './AgentPicker.js';
@@ -634,7 +635,7 @@ export function App({ config }: AppProps) {
 
       {messages.length > 0 && (
         <Box marginBottom={1} marginTop={1}>
-          <Text bold color="#E87B35">{'> '}</Text>
+          <Text bold color={theme.accent}>{'> '}</Text>
           <Text bold>Yome</Text>
           <Text> </Text>
           {isRunning

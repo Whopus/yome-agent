@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Box, Text } from 'ink';
 import { marked, type Token, type Tokens } from 'marked';
+import { theme } from './theme.js';
 
 // Hard cap on input fed to marked. Beyond this we render plain text
 // instead — marked's lexer is O(n) but the resulting AST balloons
@@ -37,7 +38,7 @@ const InlineText = React.memo(function InlineText({ text }: { text: string }): R
   return (
     <Text>
       {segs.map((s, i) => {
-        if (s.code) return <Text key={i} color="#E87B35">{s.text}</Text>;
+        if (s.code) return <Text key={i} color={theme.accent}>{s.text}</Text>;
         if (s.bold) return <Text key={i} bold>{s.text}</Text>;
         if (s.italic) return <Text key={i} italic>{s.text}</Text>;
         if (s.dim) return <Text key={i} dimColor strikethrough>{s.text}</Text>;

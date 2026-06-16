@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { theme } from './theme.js';
 
 export interface AgentOption {
   name: string;
@@ -36,21 +37,21 @@ export function AgentPicker({ options, onSelect, onCancel }: AgentPickerProps) {
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} paddingY={0}>
       <Box marginBottom={1}>
-        <Text bold color="#E87B35">Agent Loop</Text>
+        <Text bold color={theme.accent}>Agent Loop</Text>
         <Text dimColor> {'\u2014'} select with {'\u2191\u2193'}, confirm with Enter, Esc to cancel</Text>
       </Box>
 
       {options.map((opt, i) => {
         const isFocused = i === cursor;
         const pointer = isFocused ? '\u276F' : ' ';
-        const nameColor = opt.active ? '#E87B35' : isFocused ? '#E87B35' : undefined;
+        const nameColor = opt.active ? theme.accent : isFocused ? theme.accent : undefined;
         const padded = opt.name.padEnd(maxNameLen + 2);
 
         return (
           <Box key={opt.name}>
-            <Text color={isFocused ? '#E87B35' : undefined}>{pointer} </Text>
+            <Text color={isFocused ? theme.accent : undefined}>{pointer} </Text>
             <Text bold color={nameColor}>{padded}</Text>
-            {opt.active && <Text color="#E87B35" dimColor>{' (active)  '}</Text>}
+            {opt.active && <Text color={theme.accent} dimColor>{' (active)  '}</Text>}
             {!opt.active && <Text>{'           '}</Text>}
             <Text dimColor={!isFocused}>
               {opt.description}

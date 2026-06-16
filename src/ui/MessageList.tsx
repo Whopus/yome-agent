@@ -4,6 +4,7 @@ import { Markdown } from './Markdown.js';
 import { ToolResult } from './ToolResult.js';
 import { Spinner } from './Spinner.js';
 import { Banner } from './Banner.js';
+import { theme } from './theme.js';
 
 // Sentinel: a synthetic "banner" item we inject as element 0 of the
 // Static stream so the YOME logo gets committed to scrollback BEFORE
@@ -58,8 +59,8 @@ const MessageItem = React.memo(function MessageItem({ msg }: { msg: Message }): 
   switch (msg.type) {
     case 'user':
       return (
-        <Box marginTop={1} borderStyle="single" borderLeft borderTop={false} borderBottom={false} borderRight={false} borderColor="#E87B35">
-          <Text backgroundColor="black" color="#E87B35" bold>{' ' + msg.content + ' '}</Text>
+        <Box marginTop={1} borderStyle="single" borderLeft borderTop={false} borderBottom={false} borderRight={false} borderColor={theme.accent}>
+          <Text backgroundColor="black" color={theme.accent} bold>{' ' + msg.content + ' '}</Text>
         </Box>
       );
 
@@ -75,8 +76,8 @@ const MessageItem = React.memo(function MessageItem({ msg }: { msg: Message }): 
         <Box flexDirection="column" marginTop={1}>
           <Box>
             <Text>{'  '}</Text>
-            {!msg.done && <Spinner color="#E87B35" />}
-            {msg.done && <Text color="#E87B35">{DOT}</Text>}
+            {!msg.done && <Spinner color={theme.accent} />}
+            {msg.done && <Text color={theme.accent}>{DOT}</Text>}
             <Text> </Text>
             <Text bold>{msg.toolLabel}</Text>
           </Box>

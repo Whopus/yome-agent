@@ -16,6 +16,7 @@ import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import { searchHub, type SearchHit } from '../yomeSkills/search.js';
 import { installFromGithub } from '../yomeSkills/installGithub.js';
+import { theme } from './theme.js';
 
 type Phase = 'search' | 'results' | 'installing' | 'done' | 'error';
 
@@ -120,14 +121,14 @@ export function MarketplacePicker({ onClose, onInstalled }: MarketplacePickerPro
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} width="100%">
       <Box marginBottom={1}>
-        <Text bold color="#E87B35">Plugins </Text>
+        <Text bold color={theme.accent}>Plugins </Text>
         <Text dimColor>{'\u2014'} hub.yome.work</Text>
       </Box>
 
       {phase === 'search' && (
         <>
           <Box>
-            <Text color="#E87B35">{'> '}</Text>
+            <Text color={theme.accent}>{'> '}</Text>
             <TextInput
               value={query}
               onChange={setQuery}
@@ -168,13 +169,13 @@ export function MarketplacePicker({ onClose, onInstalled }: MarketplacePickerPro
                 <Box key={h.slug} flexDirection="column">
                   <Box>
                     <Box width={2} flexShrink={0}>
-                      <Text color={focused ? '#E87B35' : undefined} bold={focused}>
+                      <Text color={focused ? theme.accent : undefined} bold={focused}>
                         {focused ? '>' : ' '}
                       </Text>
                     </Box>
                     <Text>{' '}</Text>
                     <Box width={22} flexShrink={0}>
-                      <Text bold color={focused ? '#E87B35' : undefined} wrap="truncate-end">
+                      <Text bold color={focused ? theme.accent : undefined} wrap="truncate-end">
                         {h.slug}
                       </Text>
                     </Box>
@@ -183,7 +184,7 @@ export function MarketplacePicker({ onClose, onInstalled }: MarketplacePickerPro
                     </Box>
                     {h.is_official && (
                       <Box width={11} flexShrink={0}>
-                        <Text color="#E87B35">[OFFICIAL]</Text>
+                        <Text color={theme.accent}>[OFFICIAL]</Text>
                       </Box>
                     )}
                     <Text dimColor>★{h.star_count} ↓{h.install_count}</Text>
@@ -208,13 +209,13 @@ export function MarketplacePicker({ onClose, onInstalled }: MarketplacePickerPro
 
       {phase === 'installing' && (
         <Box flexDirection="column">
-          <Text color="#E87B35">{statusMsg}</Text>
+          <Text color={theme.accent}>{statusMsg}</Text>
         </Box>
       )}
 
       {phase === 'done' && (
         <Box flexDirection="column">
-          <Text color="#E87B35">{'\u2713'} {statusMsg}</Text>
+          <Text color={theme.accent}>{'\u2713'} {statusMsg}</Text>
           <Box marginTop={1}>
             <Text dimColor>Enter / Esc to close</Text>
           </Box>

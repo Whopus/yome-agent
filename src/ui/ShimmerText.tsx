@@ -11,28 +11,18 @@
 import React from 'react';
 import { Text } from 'ink';
 import { useFrame } from './animation.js';
+import { theme } from './theme.js';
 
-// Two-tone ramp: brand orange → white → orange. Linear interpolation
-// from #E87B35 to #FFFFFF and back. The peak (#FFFFFF) is the moving
+// Two-tone ramp: accent → white → accent. Linear interpolation from
+// the brand accent to white and back. The peak (#FFFFFF) is the moving
 // "spot light" sweeping across the word; everything else is just an
-// orange-to-white gradient with no extra hues.
+// accent-to-white gradient with no extra hues. The palette is sourced
+// from `theme.shimmerRamp` so retuning the brand color flows here
+// automatically.
 //
 // Ink uses chalk under the hood, which supports truecolor in modern
 // terminals, so any hex value works.
-const RAMP = [
-  '#E87B35', // brand orange (base)
-  '#EC8C4D',
-  '#F09D65',
-  '#F3AE7D',
-  '#F7BF95',
-  '#FBD0AD',
-  '#FFFFFF', // peak (the "spark")
-  '#FBD0AD',
-  '#F7BF95',
-  '#F3AE7D',
-  '#F09D65',
-  '#EC8C4D',
-];
+const RAMP = theme.shimmerRamp;
 
 interface ShimmerTextProps {
   text: string;

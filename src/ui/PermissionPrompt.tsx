@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import { theme } from './theme.js';
 
 export type PermissionChoice =
   | { kind: 'allow_once' }
@@ -86,9 +87,9 @@ export function PermissionPrompt({ toolName, message, detail, suggestedRule, onR
   };
 
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="#E87B35" paddingX={1} marginTop={1}>
+    <Box flexDirection="column" borderStyle="round" borderColor={theme.accent} paddingX={1} marginTop={1}>
       <Box>
-        <Text bold color="#E87B35">{toolName}</Text>
+        <Text bold color={theme.accent}>{toolName}</Text>
         <Text>: {message}</Text>
       </Box>
       {detail && (
@@ -103,7 +104,7 @@ export function PermissionPrompt({ toolName, message, detail, suggestedRule, onR
         const pointer = isFocused ? '> ' : '  ';
         return (
           <Box key={opt.id}>
-            <Text color={isFocused ? '#E87B35' : undefined} bold={isFocused}>{pointer}{opt.label(suggestedRule)}</Text>
+            <Text color={isFocused ? theme.accent : undefined} bold={isFocused}>{pointer}{opt.label(suggestedRule)}</Text>
           </Box>
         );
       })}
@@ -112,7 +113,7 @@ export function PermissionPrompt({ toolName, message, detail, suggestedRule, onR
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>编辑 {pendingScope === 'always' ? '永久' : '本会话'} 允许规则（Enter 确认，空值取消）：</Text>
           <Box>
-            <Text color="#E87B35">{'> '}</Text>
+            <Text color={theme.accent}>{'> '}</Text>
             <TextInput value={ruleDraft} onChange={setRuleDraft} onSubmit={handleRuleSubmit} />
           </Box>
         </Box>
@@ -122,7 +123,7 @@ export function PermissionPrompt({ toolName, message, detail, suggestedRule, onR
         <Box marginTop={1} flexDirection="column">
           <Text dimColor>告诉 agent 拒绝原因（Enter 确认，留空表示无反馈）：</Text>
           <Box>
-            <Text color="#E87B35">{'> '}</Text>
+            <Text color={theme.accent}>{'> '}</Text>
             <TextInput value={feedback} onChange={setFeedback} onSubmit={handleFeedbackSubmit} />
           </Box>
         </Box>

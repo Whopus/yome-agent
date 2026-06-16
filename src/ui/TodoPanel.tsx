@@ -14,6 +14,7 @@ import React from 'react';
 import { Box, Text } from 'ink';
 import { Spinner } from './Spinner.js';
 import type { TodoItem } from '../state/todos.js';
+import { theme } from './theme.js';
 
 interface TodoPanelProps {
   todos: TodoItem[];
@@ -39,11 +40,11 @@ export const TodoPanel = React.memo(function TodoPanel({ todos }: TodoPanelProps
       borderTop={false}
       borderBottom={false}
       borderRight={false}
-      borderColor="#E87B35"
+      borderColor={theme.accent}
       flexDirection="column"
     >
       <Box>
-        <Text bold color="#E87B35">Todos</Text>
+        <Text bold color={theme.accent}>Todos</Text>
         <Text dimColor>
           {`  ·  ${counts.completed}✓  ${counts.in_progress}▶  ${counts.pending}○`}
         </Text>
@@ -61,8 +62,8 @@ export const TodoPanel = React.memo(function TodoPanel({ todos }: TodoPanelProps
         if (t.status === 'in_progress') {
           return (
             <Box key={key}>
-              <Spinner color="#E87B35" />
-              <Text color="#E87B35" bold>{' ' + t.activeForm}</Text>
+              <Spinner color={theme.accent} />
+              <Text color={theme.accent} bold>{' ' + t.activeForm}</Text>
             </Box>
           );
         }

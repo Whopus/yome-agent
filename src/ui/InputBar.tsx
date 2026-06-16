@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Box, Text, useStdout } from 'ink';
 import type { PermissionMode } from '../permissions/types.js';
 import { MultilineTextInput } from './MultilineTextInput.js';
+import { theme } from './theme.js';
 
 export interface SlashCommand {
   name: string;
@@ -24,15 +25,12 @@ const MAX_VISIBLE = 5;
 function getPermissionLabel(mode: PermissionMode): { text: string; color: string } {
   switch (mode) {
     case 'bypassPermissions':
-      // Red is preserved as a danger signal — overrides every prompt.
-      return { text: 'Bypass - all commands allowed', color: '#FF6B6B' };
+      return { text: 'Bypass - all commands allowed', color: theme.danger };
     case 'acceptEdits':
-      // Mid-orange: somewhere between safe and danger.
-      return { text: 'Auto - edit and read-only commands', color: '#E7BD1F' };
+      return { text: 'Auto - edit and read-only commands', color: theme.warning };
     case 'default':
     default:
-      // Brand orange for the safe / default mode (was cyan).
-      return { text: 'Default - ask before write operations', color: '#E87B35' };
+      return { text: 'Default - ask before write operations', color: theme.accent };
   }
 }
 
@@ -102,7 +100,7 @@ export function InputBar({ value, onChange, onSubmit, model, loopName, slashComm
       </Box>
       {imageCount > 0 && (
         <Box paddingX={1}>
-          <Text color="#E87B35" bold>{`\u{1F4CE} ${imageCount} image${imageCount > 1 ? 's' : ''} attached`}</Text>
+          <Text color={theme.accent} bold>{`\u{1F4CE} ${imageCount} image${imageCount > 1 ? 's' : ''} attached`}</Text>
           <Text dimColor> (press Enter to send)</Text>
         </Box>
       )}
@@ -113,7 +111,7 @@ export function InputBar({ value, onChange, onSubmit, model, loopName, slashComm
           onSubmit={onSubmit}
           columns={inputColumns}
           prompt="> "
-          promptColor="#E87B35"
+          promptColor={theme.accent}
           onNavigateSuggestion={handleNavigateSuggestion}
           onAcceptSuggestion={handleAcceptSuggestion}
         />
@@ -131,7 +129,7 @@ export function InputBar({ value, onChange, onSubmit, model, loopName, slashComm
             const padded = ('/' + item.name).padEnd(maxNameLen + 3);
             return (
               <Box key={item.name}>
-                <Text color={isFocused ? '#E87B35' : undefined} dimColor={!isFocused} bold={isFocused}>{padded}</Text>
+                <Text color={isFocused ? theme.accent : undefined} dimColor={!isFocused} bold={isFocused}>{padded}</Text>
                 <Text dimColor={!isFocused}>{item.description}</Text>
               </Box>
             );

@@ -6,10 +6,11 @@
 import React from 'react';
 import { Text } from 'ink';
 import { useFrame } from './animation.js';
+import { theme } from './theme.js';
 
 const FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-export function Spinner({ color = 'cyan' }: { color?: string }) {
+export function Spinner({ color = theme.accent }: { color?: string }) {
   const frame = useFrame();
   return <Text color={color}>{FRAMES[frame % FRAMES.length]}</Text>;
 }
