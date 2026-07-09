@@ -1,5 +1,5 @@
-import React from 'react';
-import { Box, Text } from 'ink';
+import React, { useMemo } from 'react';
+import { Box, Text, useStdout } from 'ink';
 import { getVersion } from '../config.js';
 
 const LOGO = `
@@ -13,30 +13,43 @@ const LOGO = `
 const LOGO_LINES = LOGO.split('\n');
 // All logo lines are padded to the same visual width by the source
 // glyph art; `█` (U+2588) is a single-cell character so .length is
-// already the column width. We measure once at module load.
+// already the column width.
 const LOGO_WIDTH = Math.max(...LOGO_LINES.map((l) => l.length));
 
-// Snapshot the terminal width at module load. <Static> commits its
-// content ONCE to scrollback, so even if the user later resizes the
-// terminal the printed banner won't move — meaning we don't need a
-// useStdoutDimensions / resize listener here. Falling back to 80
-// matches the standard tty default.
-const TERM_WIDTH = process.stdout.columns ?? 80;
-const LEFT_PAD = Math.max(0, Math.floor((TERM_WIDTH - LOGO_WIDTH) / 2));
-const PAD_STR = ' '.repeat(LEFT_PAD);
+function centerPad(totalWidth: number, contentWidth: number): string {
+  return ' '.repeat(Math.max(0, Math.floor((totalWidth - contentWidth) / 2)));
+}
 
-// Memoized — props are () so the banner only renders once per mount.
-// We CAN'T rely on Box `alignItems="center"` here because Banner is
-// rendered inside Ink's <Static>, which writes its children directly
-// to the scrollback line-by-line and bypasses Yoga's flex layout.
-// Centering is therefore done with manual leading whitespace.
+// Banner is rendered inside Ink's `<Static>`, which writes its children
+// directly to scrollback (bypassing Yoga's flex layout) on the first
+// commit and never redraws. That means:
+//   - We can't rely on `alignItems="center"` — do manual leading padding.
+//   - We don't need a resize listener — scrollback is frozen.
+// BUT: we do need to read the real terminal width at the moment Ink
+// mounts, not at module-load time. Module load often fires before
+// Ink has fully taken over stdout (notably under `bun --watch` and
+// when booted inside a pipe wrapper), so `process.stdout.columns`
+// can read 0 / undefined and we fall back to 80 — and the logo ends
+// up visibly left-justified in every real terminal. `useStdout()`
+// gives us Ink's view of stdout, which is populated by the time
+// render runs.
 export const Banner = React.memo(function Banner() {
+  const { stdout } = useStdout();
+  const termWidth = stdout.columns ?? process.stdout.columns ?? 80;
+
+  const padStr = useMemo(() => centerPad(termWidth, LOGO_WIDTH), [termWidth]);
+  const version = getVersion();
+  const versionPad = useMemo(
+    () => centerPad(termWidth, `v${version}`.length),
+    [termWidth, version],
+  );
+
   return (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       {LOGO_LINES.map((line, i) => (
-        <Text key={i} bold>{PAD_STR}{line}</Text>
+        <Text key={i} bold>{padStr}{line}</Text>
       ))}
-      <Text dimColor>{' '.repeat(Math.max(0, Math.floor((TERM_WIDTH - `v${getVersion()}`.length) / 2)))}v{getVersion()}</Text>
+      <Text dimColor>{versionPad}v{version}</Text>
     </Box>
   );
 });
