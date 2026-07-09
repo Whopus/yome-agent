@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { PickerKeyHint } from './PickerKeyHint.js';
 
 export interface ToggleItem {
   name: string;
@@ -82,11 +83,13 @@ export function TogglePicker({ title, items, onToggle, onClose, emptyHint }: Tog
         );
       })}
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          {'\u2191\u2193'} navigate {'  '} Space/Enter toggle {'  '} Esc close
-        </Text>
-      </Box>
+      <PickerKeyHint
+        hints={[
+          { keys: '\u2191\u2193', label: 'nav' },
+          { keys: 'Space', label: 'toggle' },
+          { keys: 'Esc', label: 'close' },
+        ]}
+      />
     </Box>
   );
 }

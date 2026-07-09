@@ -13,6 +13,7 @@ import React, { useMemo, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { UnifiedSkill } from '../yomeSkills/unified.js';
 import { originLabel } from '../yomeSkills/unified.js';
+import { PickerKeyHint } from './PickerKeyHint.js';
 
 interface UnifiedSkillsPickerProps {
   skills: UnifiedSkill[];
@@ -172,11 +173,15 @@ export function UnifiedSkillsPicker({
       <Box marginTop={1}>
         <Text dimColor>{'\u2500'.repeat(60)}</Text>
       </Box>
-      <Box marginTop={1}>
-        <Text dimColor wrap="truncate-end">
-          <Text color="#E87B35">{'\u2191\u2193'}</Text> nav   <Text color="#E87B35">Space</Text> toggle   <Text color="#E87B35">a</Text> add{focused?.kind === 'hub' ? <>   <Text color="#E87B35">u</Text> uninstall</> : ''}   <Text color="#E87B35">Esc</Text> close
-        </Text>
-      </Box>
+      <PickerKeyHint
+        hints={[
+          { keys: '\u2191\u2193', label: 'nav' },
+          { keys: 'Space', label: 'toggle' },
+          { keys: 'a', label: 'add' },
+          ...(focused?.kind === 'hub' ? [{ keys: 'u', label: 'uninstall' }] : []),
+          { keys: 'Esc', label: 'close' },
+        ]}
+      />
     </Box>
   );
 }

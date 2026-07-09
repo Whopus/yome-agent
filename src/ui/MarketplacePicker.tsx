@@ -36,6 +36,13 @@ export function MarketplacePicker({ onClose, onInstalled }: MarketplacePickerPro
 
   // ── search input phase ─────────────────────────────────────────
   useInput(async (input, key) => {
+    // Global cancel: every phase honors Ctrl+C the same way as Esc on
+    // the top-level (search) phase. Matches the convention every other
+    // picker (Agent/Model/Session/Toggle/Skills) already uses.
+    if (key.ctrl && input === 'c') {
+      onClose();
+      return;
+    }
     if (phase === 'search') {
       if (key.escape) onClose();
       if (key.tab && hits.length > 0) {

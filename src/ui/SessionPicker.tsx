@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { SessionInfo } from '../sessions.js';
+import { PickerKeyHint } from './PickerKeyHint.js';
 
 interface SessionPickerProps {
   sessions: SessionInfo[];
@@ -104,11 +105,13 @@ export function SessionPicker({ sessions, onSelect, onCancel }: SessionPickerPro
         </Box>
       )}
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          {'\u2191\u2193'} navigate {'  '} Enter continue {'  '} Esc cancel
-        </Text>
-      </Box>
+      <PickerKeyHint
+        hints={[
+          { keys: '\u2191\u2193', label: 'nav' },
+          { keys: 'Enter', label: 'continue' },
+          { keys: 'Esc', label: 'close' },
+        ]}
+      />
     </Box>
   );
 }

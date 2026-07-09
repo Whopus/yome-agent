@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import type { ModelEntry } from '../config.js';
+import { PickerKeyHint } from './PickerKeyHint.js';
 
 interface ModelPickerProps {
   models: ModelEntry[];
@@ -125,11 +126,13 @@ export function ModelPicker({ models, currentModel, onSelect, onCancel }: ModelP
         </Box>
       )}
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          {'\u2191\u2193'} navigate {'  '} Enter select {'  '} Esc cancel
-        </Text>
-      </Box>
+      <PickerKeyHint
+        hints={[
+          { keys: '\u2191\u2193', label: 'nav' },
+          { keys: 'Enter', label: 'select' },
+          { keys: 'Esc', label: 'close' },
+        ]}
+      />
     </Box>
   );
 }

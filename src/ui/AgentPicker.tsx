@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { PickerKeyHint } from './PickerKeyHint.js';
 
 export interface AgentOption {
   name: string;
@@ -59,11 +60,13 @@ export function AgentPicker({ options, onSelect, onCancel }: AgentPickerProps) {
         );
       })}
 
-      <Box marginTop={1}>
-        <Text dimColor>
-          {'\u2191\u2193'} navigate {'  '} Enter select {'  '} Esc cancel
-        </Text>
-      </Box>
+      <PickerKeyHint
+        hints={[
+          { keys: '\u2191\u2193', label: 'nav' },
+          { keys: 'Enter', label: 'select' },
+          { keys: 'Esc', label: 'close' },
+        ]}
+      />
     </Box>
   );
 }
