@@ -153,15 +153,18 @@ export function App({ config }: AppProps) {
         return;
       }
 
-      // /login — mock login command
+      // /login — not implemented yet. Earlier revisions of this file
+      // printed a fake credentials exchange with a hardcoded username,
+      // which looked like a real auth flow to anyone scrolling back.
+      // Until a real auth integration lands, just say so.
       if (prompt === '/login') {
         setMessages((prev) => [
           ...prev,
-          { id: nextMsgId(), type: 'text', content: '🔒 Login requested. This is a mock implementation.' },
-          { id: nextMsgId(), type: 'text', content: 'Enter your credentials (mock):' },
-          { id: nextMsgId(), type: 'text', content: '• Username: `user@example.com`' },
-          { id: nextMsgId(), type: 'text', content: '• Password: `••••••••`' },
-          { id: nextMsgId(), type: 'text', content: '✅ Login successful! You are now authenticated.' },
+          {
+            id: nextMsgId(),
+            type: 'text',
+            content: '`/login` is not implemented yet. Configure providers via `~/.yome/settings.json` for now.',
+          },
         ]);
         return;
       }
