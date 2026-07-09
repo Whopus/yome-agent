@@ -4,6 +4,7 @@ import { Markdown } from './Markdown.js';
 import { ToolResult } from './ToolResult.js';
 import { Spinner } from './Spinner.js';
 import { Banner } from './Banner.js';
+import { ToolStatusDot } from './ToolStatusDot.js';
 
 // Sentinel: a synthetic "banner" item we inject as element 0 of the
 // Static stream so the YOME logo gets committed to scrollback BEFORE
@@ -12,7 +13,11 @@ import { Banner } from './Banner.js';
 // can never collide.
 type StaticItem = Message | { __banner: true; id: -1 };
 
-const DOT = process.platform === 'darwin' ? '\u23FA' : '\u25CF';
+// How long a just-completed tool_start keeps animating in the live
+// region before it gets committed to <Static>. Must be >= the total
+// duration of ToolStatusDot's fade sequence so the last transition
+// frame has time to render before the row freezes.
+const TRANSITION_HOLD_MS = 800;
 
 export interface Message {
   type: 'user' | 'text' | 'tool_start' | 'tool_result' | 'error';
@@ -75,8 +80,7 @@ const MessageItem = React.memo(function MessageItem({ msg }: { msg: Message }): 
         <Box flexDirection="column" marginTop={1}>
           <Box>
             <Text>{'  '}</Text>
-            {!msg.done && <Spinner color="#E87B35" />}
-            {msg.done && <Text color="#E87B35">{DOT}</Text>}
+            <ToolStatusDot done={!!msg.done} />
             <Text> </Text>
             <Text bold>{msg.toolLabel}</Text>
           </Box>
@@ -144,21 +148,34 @@ interface MessageListProps {
 // `id` at push time (App.tsx). If an older message's `done` flag flips
 // from false→true we want it to leave the live region and re-mount in
 // Static cleanly, so we partition every render.
-function partitionMessages(messages: Message[]): { staticMsgs: Message[]; liveMsgs: Message[] } {
-  // A message is "live" if it's a tool_start that hasn't completed yet.
-  // Everything else (including tool_result, text, user, error) is stable
-  // and can be committed to <Static>.
+function partitionMessages(
+  messages: Message[],
+  doneAt: Map<number, number>,
+  now: number,
+): { staticMsgs: Message[]; liveMsgs: Message[] } {
+  // A message is "live" if:
+  //   - it's a tool_start that hasn't completed yet, OR
+  //   - it's a tool_start that JUST completed (within TRANSITION_HOLD_MS)
+  //     so ToolStatusDot gets to play its fade animation before the row
+  //     is frozen into <Static>.
   //
-  // We also keep the very last message in the live region so its initial
-  // mount animation (e.g. a final assistant text) doesn't get suppressed
-  // by Static's "render once" semantics on the first frame.
+  // Everything else (user text, assistant text, tool_result, error) is
+  // stable immediately.
   const staticMsgs: Message[] = [];
   const liveMsgs: Message[] = [];
 
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]!;
-    const isOpenTool = m.type === 'tool_start' && !m.done;
-    if (isOpenTool) {
+    if (m.type !== 'tool_start') {
+      staticMsgs.push(m);
+      continue;
+    }
+    if (!m.done) {
+      liveMsgs.push(m);
+      continue;
+    }
+    const ts = m.id !== undefined ? doneAt.get(m.id) : undefined;
+    if (ts !== undefined && now - ts < TRANSITION_HOLD_MS) {
       liveMsgs.push(m);
     } else {
       staticMsgs.push(m);
@@ -168,7 +185,33 @@ function partitionMessages(messages: Message[]): { staticMsgs: Message[]; liveMs
 }
 
 export const MessageList = React.memo(function MessageList({ messages, streamText, isRunning, resetEpoch = 0 }: MessageListProps) {
-  const { staticMsgs, liveMsgs } = partitionMessages(messages);
+  // Track when each tool_start first transitions to done so partition
+  // can hold it in the live region long enough for ToolStatusDot to
+  // finish its fade. The ref survives re-renders; we also schedule a
+  // follow-up render when the hold window expires.
+  const doneAtRef = React.useRef<Map<number, number>>(new Map());
+  const [, setTick] = React.useState(0);
+
+  const now = Date.now();
+  let earliestExpiry = Infinity;
+  for (const m of messages) {
+    if (m.type !== 'tool_start' || !m.done || m.id === undefined) continue;
+    let ts = doneAtRef.current.get(m.id);
+    if (ts === undefined) {
+      ts = now;
+      doneAtRef.current.set(m.id, ts);
+    }
+    const expiry = ts + TRANSITION_HOLD_MS;
+    if (expiry > now && expiry < earliestExpiry) earliestExpiry = expiry;
+  }
+
+  React.useEffect(() => {
+    if (earliestExpiry === Infinity) return;
+    const t = setTimeout(() => setTick((n) => n + 1), earliestExpiry - Date.now());
+    return () => clearTimeout(t);
+  }, [earliestExpiry]);
+
+  const { staticMsgs, liveMsgs } = partitionMessages(messages, doneAtRef.current, now);
 
   // Banner is item #0 of the Static stream, so Ink commits it to the
   // terminal once at boot — right after the user's `yome` command line
